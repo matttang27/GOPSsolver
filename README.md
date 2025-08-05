@@ -16,8 +16,6 @@ There's two methods I can think of right now:
 - Possibly inaccurate
 - Lots of time
 
-
-
 Let's look at Option 1 first.
 
 The idea is to build a tree of all possible states and their payoffs.
@@ -29,38 +27,37 @@ Then, Player A has 1, with (1,3), Player B has 0, with (2,3), and the cards are 
 The immediate payoff matrix would be a 2x2 matrix.
 
 |       | 2   | 3   |
-|-------|-----|-----|
+| ----- | --- | --- |
 | **1** | -2  | -2  |
-| **3** |  2  |  0  |
+| **3** | 2   | 0   |
 
 We then add 1 to each cell, since A is up 1.
 
 |       | 2   | 3   |
-|-------|-----|-----|
+| ----- | --- | --- |
 | **1** | -1  | -1  |
-| **3** |  3  |  1  |
+| **3** | 3   | 1   |
 
 This is the difference in points after the second round, but we need to consider the future states as well. Thankfully for 3-card GOPS, the last round is set.
 
 For example, in column (1,3), where player A plays 1 and player B players 3, the remaining cards are 3 and 2, with the prize being 3. Therefore player A will win 3 points.
 
-|       | 2         | 3         |
-|-------|-----------|-----------|
-| **1** | -1 + 0    | -1 + 2    |
-| **3** |  3 + -3   |  1 + -3   |
-
+|       | 2      | 3      |
+| ----- | ------ | ------ |
+| **1** | -1 + 0 | -1 + 2 |
+| **3** | 3 + -3 | 1 + -3 |
 
 |       | 2   | 3   |
-|-------|-----|-----|
-| **1** | -1  |  1  |
-| **3** |  0  | -2  |
+| ----- | --- | --- |
+| **1** | -1  | 1   |
+| **3** | 0   | -2  |
 
 The goal of GOPS is not to maximize your score difference, but to simply win. Therefore, in (3,3), even though Player B will win by 2, it is still only a win, so you consider it -1.
 
 |       | 2   | 3   |
-|-------|-----|-----|
-| **1** | -1  |  1  |
-| **3** |  0  | -1  |
+| ----- | --- | --- |
+| **1** | -1  | 1   |
+| **3** | 0   | -1  |
 
 Looking at the matrix, it looks like Player A should play 1 because it gives an average of 0, but if Player B knows this, they will play 2 all the time and win. Therefore, we need to find the mixed strategy that gives the best expected value, assuming your opponent knows your strategy and plays the best counter-strategy. This is the Nash equilibrium.
 
@@ -107,9 +104,9 @@ p1, p2, minEV are real numbers
 
 max minEV
 
-and objectives (which are also constraints): 
--1 * p1 + 0 * p2 >= minEV
-1 * p1 + -1 * p2 >= min EV
+and objectives (which are also constraints):
+-1 _ p1 + 0 _ p2 >= minEV
+1 _ p1 + -1 _ p2 >= min EV
 
 and constraints
 0 <= p1, p2 <= 1
@@ -129,6 +126,7 @@ p1 + p2 = 1
 ```
 
 Here is the code in python
+
 ```python
 
 from scipy.optimize import linprog
@@ -169,7 +167,7 @@ if res.success:
     strategy = np.array([p1, p2])
     print(f"✅ Optimal strategy (Player A): card 1 = {p1:.3f}, card 3 = {p2:.3f}")
     print(f"🎯 Guaranteed expected value: {v:.3f}")
-    
+
 
     # Check alternative strategies
     test_strategies = {
@@ -186,7 +184,17 @@ if res.success:
         ev_col1 = s[0]*A[0][1] + s[1]*A[1][1]
         worst = min(ev_col0, ev_col1)
         print(f"{name.ljust(20)} → min EV = {worst:.3f} (vs col {0 if ev_col0 < ev_col1 else 1})")
-    
+
 else:
     print("❌ Linear program failed to solve.")
 ```
+
+We now have a way to calculate the optimal strategy with 2 cards left, as well as return the expected value of the optimal strategy. Now we can extend this to more cards by recursively applying the same logic, building a tree of states and using linear programming to find the optimal mixed strategy at each state.
+
+For example, with 3 cards, with a prize of 1, the immediate payoff matrix is:
+
+|       | 1   | 2   | 3   |
+| ----- | --- | --- | --- |
+| **1** | 0   | -1  | -1  |
+| **2** | 1   | 0   | -1  |
+| **3** | 1   | 1   | 0   |
