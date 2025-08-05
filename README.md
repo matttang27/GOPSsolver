@@ -189,12 +189,33 @@ else:
     print("❌ Linear program failed to solve.")
 ```
 
-We now have a way to calculate the optimal strategy with 2 cards left, as well as return the expected value of the optimal strategy. Now we can extend this to more cards by recursively applying the same logic, building a tree of states and using linear programming to find the optimal mixed strategy at each state.
+The solution is p1 = 0.333, p2 = 0.667, with an expected value of -0.333.
 
-For example, with 3 cards, with a prize of 1, the immediate payoff matrix is:
+We now have a way to calculate the optimal strategy with 2 cards left, as well as return the expected value of the optimal strategy.
+
+I'm ngl it took me a while to figure out the next step, but I've realized it's simply to simulate every possible outcome given an action, and average the EV. I don't think that makes sense, so I'll give an example, with all 3 cards.
+
+Let's play 3-card GOPS, where Player A has (1,2,3), B has (1,2,3) and the prizes are (1,2,3). Let's say the first prize is 1.
+
+We want to build a matrix like this:
 
 |       | 1   | 2   | 3   |
 | ----- | --- | --- | --- |
-| **1** | 0   | -1  | -1  |
-| **2** | 1   | 0   | -1  |
-| **3** | 1   | 1   | 0   |
+| **1** |     |     |     |
+| **2** |     |     |     |
+| **3** |     |     |     |
+
+What should be inside each cell? Originally, I was doing similar to our 2-card example, where we calculate the immediate payoff + future states. Then I realized it is actually just the EV of that action. I suck at explaining. Let's go to Cell (2,1), where Player A plays 2, and Player B plays 1. We then have the exact same scenario as our 2-card example. We've already calculated the optimal strategy for that, but more importantly, we have the optimal EV, which is -0.333. Therefore, we can fill in Cell (2,1) with -0.333.
+
+We can already fill in 4 other cells immediately as well. If both players are in the same state and play the same card, the resulting state is also identical, so the EV is 0. Therefore, (1,1), (2,2), (3,3) are all 0. Additionally, Player A playing 1 and B playing 2 is the opposite of our previous example, so the EV is now flipped, or 0.333.
+
+We now have:
+
+|       | 1     | 2     | 3     |
+| ----- | ----- | ----- | ----- |
+| **1** | 0     | 0.333 | ?     |
+| **2** | 0.333 | 0     | ?     |
+| **3** | ?     | ?     | 0     |
+
+Filling in the rest of the cells using 2-card EVs, we get:
+
