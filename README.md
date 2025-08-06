@@ -214,8 +214,15 @@ We now have:
 |       | 1     | 2     | 3     |
 | ----- | ----- | ----- | ----- |
 | **1** | 0     | 0.333 | ?     |
-| **2** | 0.333 | 0     | ?     |
+| **2** | -0.333 | 0     | ?     |
 | **3** | ?     | ?     | 0     |
 
 Filling in the rest of the cells using 2-card EVs, we get:
 
+|       | 1     | 2     | 3     |
+| ----- | ----- | ----- | ----- |
+| **1** | 0     | 0.333 | 1     |
+| **2** | -0.333 | 0     | 0.333     |
+| **3** | -1     | -0.333     | 0     |
+
+And so playing 1 100% of the time is the best strategy when you see 1. This is pretty obvious, because even in the best case scenario of you playing 2 and them playing 1, your EV is -0.333.
