@@ -9,10 +9,11 @@ def cmp(a: Union[int, float], b: Union[int, float]) -> int:
     """Compare two numbers and return -1, 0, or 1 (spaceship operator)."""
     return (a > b) - (a < b)
 
-# Given a n x n payoff matrix, returns p, the probabilities for the best strategy, and v, the expected value.
+
+
 def findBestStrategy(payoffMatrix: np.ndarray) -> tuple[Optional[np.ndarray], Optional[float]]:
     """
-    Find the best mixed strategy for a zero-sum game.
+    Given a n x n payoff matrix, returns p, the probabilities for the best strategy, and v, the expected value.
     
     Args:
         payoffMatrix: n x m numpy array representing the payoff matrix
@@ -66,38 +67,7 @@ def findBestCounterplay(payoffMatrix: np.ndarray, p: np.ndarray) -> None:
     
     print(f"Counterplay → min EV = {worst:.3f} (vs col {worst_col}), p = {p}")
 
-def createMatrix(cardsA: list[int], cardsB: list[int], pointDiff: int, prizes: list[int], prize: int) -> np.ndarray:
-    """
-    Create a payoff matrix for the given game state.
-    
-    Args:
-        cardsA: Player A's remaining cards
-        cardsB: Player B's remaining cards  
-        pointDiff: Current point difference
-        prizes: List of remaining prizes
-        prize: Current prize value
-        
-    Returns:
-        Numpy array representing the payoff matrix
-    """
-    if (len(cardsA) == 1):
-        return np.array([[cmp(pointDiff + cmp(cardsA[0], cardsB[0]) * prize, 0)]])
-    elif (len(cardsA) == 2):
-        # Create a 2x2 matrix
-        matrix = np.zeros((2, 2))
-        for i in range(2):
-            for j in range(2):
-                newCardsA = cardsA.copy()
-                newCardsB = cardsB.copy()
-                newCardsA.remove(cardsA[i])
-                newCardsB.remove(cardsB[j])
-                matrix[i][j] = pointDiff + cmp(cardsA[i], cardsB[j]) * prize
-                matrix[i][j] = calculateEV(newCardsA, newCardsB, int(matrix[i][j]), [], prizes[0])
-        return matrix
-    else:
-        raise ValueError(f"Unsupported card count: {len(cardsA)}")
-
-def calculateEV(cardsA: list[int], cardsB: list[int], pointDiff: int, prizes: list[int], prizeIndex: int) -> Union[int, float]:
+def calculateEV(cardsA: list[int], cardsB: list[int], pointDiff: int, prizes: list[int], prizeIndex: int, returnType: str) -> Union[int, float]:
     """
     Calculate the expected value for the current game state.
     
@@ -107,17 +77,18 @@ def calculateEV(cardsA: list[int], cardsB: list[int], pointDiff: int, prizes: li
         pointDiff: Current point difference
         prizes: List of remaining prizes
         prizeIndex: Current prize index
+        returnType: Whether to return the matrix, the ev, or the optimal probability distribution.
 
     Returns:
         Expected value (int for base case, float for recursive case)
     """
-    print(f"Calculating EV for A: {cardsA}, B: {cardsB}, pointDiff: {pointDiff}, prizes: {prizes}, prizeIndex: {prizeIndex}")
+    #print(f"Calculating EV for A: {cardsA}, B: {cardsB}, pointDiff: {pointDiff}, prizes: {prizes}, prizeIndex: {prizeIndex}")
     if (len(cardsA) == 1):
         return cmp(pointDiff + (cmp(cardsA[0], cardsB[0]) * prizes[0]), 0)
 
     cardsLeft = len(cardsA)
 
-    print(f"Cards left: {cardsLeft}")
+    #print(f"Cards left: {cardsLeft}")
     # Create n x n matrix
 
     matrix = np.zeros((cardsLeft, cardsLeft))
@@ -128,30 +99,36 @@ def calculateEV(cardsA: list[int], cardsB: list[int], pointDiff: int, prizes: li
             newDiff = pointDiff + cmp(cardsA[i], cardsB[j]) * prizes[prizeIndex]
             newPrizes = prizes[:prizeIndex] + prizes[prizeIndex+1:]
             ev = 0.0
-            print("Calculating EV for A:", newA, "B:", newB, "Diff:", newDiff, "Prizes:", newPrizes)
+            #print("Calculating EV for A:", newA, "B:", newB, "Diff:", newDiff, "Prizes:", newPrizes)
             for k in range(cardsLeft - 1):
-                ev += calculateEV(newA, newB, newDiff, newPrizes, k)
-                print(ev)
+                ev += calculateEV(newA, newB, newDiff, newPrizes, k, "v")
+                #print(ev)
 
             ev /= cardsLeft - 1
-            print(f"EV for A[{i}] vs B[{j}]: {ev}")
+            #print(f"EV for A[{i}] vs B[{j}]: {ev}")
             matrix[i][j] = ev
 
-    print(f"Payoff matrix:\n{matrix}")
+    if (returnType == "m"):
+        return matrix
+
+    #print(f"Payoff matrix:\n{matrix}")
     p, v = findBestStrategy(matrix)
 
-    print(f"Best strategy found: p = {p}, v = {v}")
-    if v is not None:
-        return v
+    #print(f"Best strategy found: p = {p}, v = {v}")
+    if returnType == "p":
+        return p
     else:
-        raise RuntimeError("Failed to find best strategy")
+        return v
 
-#print(calculateEV([1],[3],1,[2],0))
-#print(calculateEV([3],[1],1,[2],0))
-#print(calculateEV([2,3],[2,3],1,[2,3],0))
-#print(calculateEV([2,3],[1,3],0,[2,3],0))
-#print(calculateEV([1,3],[2,3],2,[1,3],0))
-print(calculateEV([1,3],[2,3],2,[1,3],1))
-#print(calculateEV([1,2,3],[1,2,3],0,[1,2,3],0))
-#print(calculateEV([1,2,3],[1,2,3],0,[1,2,3],1))
-#print(calculateEV([1,2,3],[1,2,3],0,[1,2,3],2))
+def full(n):
+    """Returns an array from 1 to n"""
+    return [i for i in range(1, n + 1)]
+
+#check how long it takes
+
+
+start_time = time.time()
+print([calculateEV(full(5), full(5), 0, full(5), 1, "p")])
+end_time = time.time()
+print(f"Time taken: {end_time - start_time} seconds")
+
