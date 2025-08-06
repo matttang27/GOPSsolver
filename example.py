@@ -92,8 +92,25 @@ def calculateEV(cardsA: list[int], cardsB: list[int], pointDiff: int, prizes: li
     # Create n x n matrix
 
     matrix = np.zeros((cardsLeft, cardsLeft))
+
+    ## Optimizations:
+    # If i == j and cardsA == cardsB and pointDiff == 0, EV is 0.
+    # If cardsA == cardsB and pointDiff == 0, then matrix[i][j] = -matrix[j][i] (antisymmetric)
+    # If abs(pointDiff) > sum(remaining prizes), then whoever has more points gets 1 EV.
     for i in range(cardsLeft):
         for j in range(cardsLeft):
+            if (abs(pointDiff) > sum(prizes)):
+                matrix[i][j] = cmp(pointDiff, 0)
+                continue
+            if (cardsA == cardsB and pointDiff == 0):
+                if (i == j):
+                    matrix[i][j] = 0
+                    continue
+                elif (i > j):
+                    matrix[i][j] = -matrix[j][i]
+                    continue
+            
+            
             newA = cardsA[:i] + cardsA[i+1:]
             newB = cardsB[:j] + cardsB[j+1:]
             newDiff = pointDiff + cmp(cardsA[i], cardsB[j]) * prizes[prizeIndex]
