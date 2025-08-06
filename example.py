@@ -3,6 +3,7 @@ from scipy.optimize import linprog
 import time
 import numpy as np
 from typing import Optional, Union
+from functools import lru_cache
 
 # Omg it's the spaceship operator
 def cmp(a: Union[int, float], b: Union[int, float]) -> int:
@@ -67,85 +68,61 @@ def findBestCounterplay(payoffMatrix: np.ndarray, p: np.ndarray) -> None:
     
     print(f"Counterplay → min EV = {worst:.3f} (vs col {worst_col}), p = {p}")
 
-def calculateEV(cardsA: list[int], cardsB: list[int], pointDiff: int, prizes: list[int], prizeIndex: int, returnType: str) -> Union[int, float]:
+@lru_cache(maxsize=None)
+def calculateEV(cardsA: tuple[int, ...], cardsB: tuple[int, ...], pointDiff: int, prizes: tuple[int, ...], prizeIndex: int, returnType: str) -> Union[int, float]:
     """
-    Calculate the expected value for the current game state.
-    
-    Args:
-        cardsA: Player A's remaining cards
-        cardsB: Player B's remaining cards
-        pointDiff: Current point difference
-        prizes: List of remaining prizes
-        prizeIndex: Current prize index
-        returnType: Whether to return the matrix, the ev, or the optimal probability distribution.
-
-    Returns:
-        Expected value (int for base case, float for recursive case)
+    Calculate the expected value for the current game state (cached version).
     """
-    #print(f"Calculating EV for A: {cardsA}, B: {cardsB}, pointDiff: {pointDiff}, prizes: {prizes}, prizeIndex: {prizeIndex}")
-    if (len(cardsA) == 1):
+    if len(cardsA) == 1:
         return cmp(pointDiff + (cmp(cardsA[0], cardsB[0]) * prizes[0]), 0)
 
     cardsLeft = len(cardsA)
-
-    #print(f"Cards left: {cardsLeft}")
-    # Create n x n matrix
-
     matrix = np.zeros((cardsLeft, cardsLeft))
 
-    ## Optimizations:
-    # If i == j and cardsA == cardsB and pointDiff == 0, EV is 0.
-    # If cardsA == cardsB and pointDiff == 0, then matrix[i][j] = -matrix[j][i] (antisymmetric)
-    # If abs(pointDiff) > sum(remaining prizes), then whoever has more points gets 1 EV.
     for i in range(cardsLeft):
         for j in range(cardsLeft):
-            if (abs(pointDiff) > sum(prizes)):
+            if abs(pointDiff) > sum(prizes):
                 matrix[i][j] = cmp(pointDiff, 0)
                 continue
-            if (cardsA == cardsB and pointDiff == 0):
-                if (i == j):
+            if cardsA == cardsB and pointDiff == 0:
+                if i == j:
                     matrix[i][j] = 0
                     continue
-                elif (i > j):
+                elif i > j:
                     matrix[i][j] = -matrix[j][i]
                     continue
-            
             
             newA = cardsA[:i] + cardsA[i+1:]
             newB = cardsB[:j] + cardsB[j+1:]
             newDiff = pointDiff + cmp(cardsA[i], cardsB[j]) * prizes[prizeIndex]
             newPrizes = prizes[:prizeIndex] + prizes[prizeIndex+1:]
             ev = 0.0
-            #print("Calculating EV for A:", newA, "B:", newB, "Diff:", newDiff, "Prizes:", newPrizes)
+            
             for k in range(cardsLeft - 1):
                 ev += calculateEV(newA, newB, newDiff, newPrizes, k, "v")
-                #print(ev)
 
             ev /= cardsLeft - 1
-            #print(f"EV for A[{i}] vs B[{j}]: {ev}")
             matrix[i][j] = ev
 
-    if (returnType == "m"):
+    if returnType == "m":
         return matrix
 
-    #print(f"Payoff matrix:\n{matrix}")
     p, v = findBestStrategy(matrix)
 
-    #print(f"Best strategy found: p = {p}, v = {v}")
     if returnType == "p":
         return p
     else:
         return v
 
 def full(n):
-    """Returns an array from 1 to n"""
-    return [i for i in range(1, n + 1)]
+    """Returns a tuple from 1 to n"""
+    return tuple(i for i in range(1, n + 1))
 
 #check how long it takes
 
 
 start_time = time.time()
-print([calculateEV(full(5), full(5), 0, full(5), 1, "p")])
+print([calculateEV(full(5), full(5), 0, full(5), 4, "p")])
 end_time = time.time()
 print(f"Time taken: {end_time - start_time} seconds")
 
