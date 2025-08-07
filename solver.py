@@ -10,7 +10,28 @@ def cmp(a: Union[int, float], b: Union[int, float]) -> int:
     """Compare two numbers and return -1, 0, or 1 (spaceship operator)."""
     return (a > b) - (a < b)
 
-
+def compress_cards(cardsA: tuple[int, ...], cardsB: tuple[int, ...]) -> tuple[tuple[int, ...], tuple[int, ...]]:
+    """
+    Compress card values to remove gaps while preserving relative order.
+    
+    Args:
+        cardsA: First player's cards
+        cardsB: Second player's cards
+    
+    Returns:
+        Tuple of (compressed_cardsA, compressed_cardsB)
+    """
+    # Get all unique values and sort them
+    all_values = sorted(set(cardsA) | set(cardsB))
+    
+    # Create mapping from old values to new compressed values
+    value_map = {old_val: new_val for new_val, old_val in enumerate(all_values, 1)}
+    
+    # Apply mapping to both card sets
+    compressed_A = tuple(value_map[card] for card in cardsA)
+    compressed_B = tuple(value_map[card] for card in cardsB)
+    
+    return compressed_A, compressed_B
 
 def findBestStrategy(payoffMatrix: np.ndarray) -> tuple[Optional[np.ndarray], Optional[float]]:
     """
@@ -79,6 +100,12 @@ def calculateEV(cardsA: tuple[int, ...], cardsB: tuple[int, ...], pointDiff: int
     cardsLeft = len(cardsA)
     matrix = np.zeros((cardsLeft, cardsLeft))
 
+    # Guarantee array: guarantee[i] = sum of i largest prizes - sum of remaining prizes.
+    # If you have X cards higher than the entire other side, you get a minimum of guarantee[X] points.
+    sorted_prizes = sorted(prizes, reverse=True)
+    guarantee = [sum(sorted_prizes[:i]) - sum(sorted_prizes[i:]) for i in range(cardsLeft + 1)]
+
+
     for i in range(cardsLeft):
         for j in range(cardsLeft):
             if abs(pointDiff) > sum(prizes):
@@ -91,9 +118,25 @@ def calculateEV(cardsA: tuple[int, ...], cardsB: tuple[int, ...], pointDiff: int
                 elif i > j:
                     matrix[i][j] = -matrix[j][i]
                     continue
+            # ## If one side has X cards which are higher than the entire other side, and the top X prizes would win, return true.
+            # maxA = max(cardsA)
+            # maxB = max(cardsB)
+            # if maxA > maxB:
+            #     num_higher = sum(1 for card in cardsA if card > maxB)
+            #     if guarantee[num_higher] > -pointDiff:
+            #         matrix[i][j] = 1
+            #         continue
+            # if maxB > maxA:
+            #     num_higher = sum(1 for card in cardsB if card > maxA)
+            #     if guarantee[num_higher] > pointDiff:
+            #         matrix[i][j] = -1
+            #         continue
+
             
             newA = cardsA[:i] + cardsA[i+1:]
             newB = cardsB[:j] + cardsB[j+1:]
+
+            newA, newB = compress_cards(newA, newB)
             newDiff = pointDiff + cmp(cardsA[i], cardsB[j]) * prizes[prizeIndex]
             newPrizes = prizes[:prizeIndex] + prizes[prizeIndex+1:]
             ev = 0.0
@@ -120,9 +163,34 @@ def full(n):
 
 #check how long it takes
 
+for i in range(1, 7):
+    start_time = time.time()
+    print(f"Calculating EV for full({i})...")
+    
+    # Get cache info before calculation
+    cache_before = calculateEV.cache_info()
+    
+    ev = calculateEV(full(i), full(i), 0, full(i), i - 1, "p")
+    
+    # Get cache info after calculation
+    cache_after = calculateEV.cache_info()
+    
+    end_time = time.time()
+    
+    # Calculate cache statistics for this iteration
+    new_hits = cache_after.hits - cache_before.hits
+    new_misses = cache_after.misses - cache_before.misses
+    total_calls = new_hits + new_misses
+    hit_rate = (new_hits / total_calls * 100) if total_calls > 0 else 0
+    
+    print(f"EV for full({i}) = {ev}")
+    print(f"Time taken: {end_time - start_time:.3f} seconds")
+    print(f"Cache hits: {new_hits}, misses: {new_misses}, hit rate: {hit_rate:.1f}%")
+    print(f"Total cache size: {cache_after.currsize} entries")
+    print(f"Cumulative hits: {cache_after.hits}, misses: {cache_after.misses}")
+    print()
 
-start_time = time.time()
-print([calculateEV(full(5), full(5), 0, full(5), 4, "p")])
-end_time = time.time()
-print(f"Time taken: {end_time - start_time} seconds")
+# Final cache summary
+print("Final cache statistics:")
+print(calculateEV.cache_info())
 

@@ -1,6 +1,6 @@
 import unittest
 import numpy as np
-from example import cmp, findBestStrategy, findBestCounterplay, calculateEV
+from solver import cmp, findBestStrategy, findBestCounterplay, calculateEV
 
 
 class TestGOPSFunctions(unittest.TestCase):
