@@ -73,8 +73,6 @@ def findBestStrategy(payoffMatrix: np.ndarray) -> tuple[Optional[np.ndarray], Op
     else:
         return None, None
 
-# Given a payoff matrix and probability distribution p, finds the opponent's best pure strategy, which is also it's best counterplay.
-# Prints the minimum expected value and the column index of the best counterplay.
 def findBestCounterplay(payoffMatrix: np.ndarray, p: np.ndarray) -> None:
     """
     Find and print the opponent's best counterplay strategy.
@@ -89,28 +87,62 @@ def findBestCounterplay(payoffMatrix: np.ndarray, p: np.ndarray) -> None:
     
     print(f"Counterplay → min EV = {worst:.3f} (vs col {worst_col}), p = {p}")
 
+def guaranteed(cardsA: tuple[int, ...], cardsB: tuple[int, ...], pointDiff: int, prizes: tuple[int, ...]) -> int:
+    """
+    Check if one side has enough cards higher than the other to guarantee a win.
+    Checks also if one side has enough pointDiff even if they don't have higher cards.
+    
+    Args:
+        cardsA: First player's cards
+        cardsB: Second player's cards
+        pointDiff: Current point difference
+        prizes: Remaining prize cards
+        
+    Returns:
+        1 if A is guaranteed, -1 if B is guaranteed, 0 otherwise.
+    """
+    # Guarantee array: guarantee[i] = sum of i largest prizes - sum of remaining prizes.
+    # If you have X cards higher than the entire other side, you get a minimum of guarantee[X] points.
+    cardsLeft = len(prizes)
+    sorted_prizes = sorted(prizes, reverse=True)  # Sort descending to get largest first
+    guarantee = [sum(sorted_prizes[:i]) - sum(sorted_prizes[i:]) for i in range(cardsLeft + 1)]
+    [-6, 0, 4, 6]
+    guaranteeA = sum(1 for card in cardsA if card > cardsB[-1])
+    guaranteeB = sum(1 for card in cardsB if card > cardsA[-1])
+    
+    if (guarantee[guaranteeA] + pointDiff) > 0:
+        return 1
+    elif (pointDiff - guarantee[guaranteeB]) < 0:
+        return -1
+    else:
+        return 0
+
+
 @lru_cache(maxsize=None)
 def calculateEV(cardsA: tuple[int, ...], cardsB: tuple[int, ...], pointDiff: int, prizes: tuple[int, ...], prizeIndex: int, returnType: str) -> Union[int, float]:
     """
     Calculate the expected value for the current game state (cached version).
     """
     if len(cardsA) == 1:
-        return cmp(pointDiff + (cmp(cardsA[0], cardsB[0]) * prizes[0]), 0)
+        if (returnType == "v"): 
+            return cmp(pointDiff + (cmp(cardsA[0], cardsB[0]) * prizes[0]), 0)
+        if (returnType == "p"):
+            return np.array([1])
+        if (returnType == "m"):
+            return np.matrix([[cmp(pointDiff + (cmp(cardsA[0], cardsB[0]) * prizes[0]), 0)]])
 
     cardsLeft = len(cardsA)
     matrix = np.zeros((cardsLeft, cardsLeft))
 
-    # Guarantee array: guarantee[i] = sum of i largest prizes - sum of remaining prizes.
-    # If you have X cards higher than the entire other side, you get a minimum of guarantee[X] points.
-    sorted_prizes = sorted(prizes, reverse=True)
-    guarantee = [sum(sorted_prizes[:i]) - sum(sorted_prizes[i:]) for i in range(cardsLeft + 1)]
+    
+
+    alreadyWon = guaranteed(cardsA, cardsB, pointDiff, prizes)
+    if (alreadyWon != 0 and returnType == "v"):
+        return alreadyWon
 
 
     for i in range(cardsLeft):
         for j in range(cardsLeft):
-            if abs(pointDiff) > sum(prizes):
-                matrix[i][j] = cmp(pointDiff, 0)
-                continue
             if cardsA == cardsB and pointDiff == 0:
                 if i == j:
                     matrix[i][j] = 0
@@ -118,20 +150,6 @@ def calculateEV(cardsA: tuple[int, ...], cardsB: tuple[int, ...], pointDiff: int
                 elif i > j:
                     matrix[i][j] = -matrix[j][i]
                     continue
-            # ## If one side has X cards which are higher than the entire other side, and the top X prizes would win, return true.
-            # maxA = max(cardsA)
-            # maxB = max(cardsB)
-            # if maxA > maxB:
-            #     num_higher = sum(1 for card in cardsA if card > maxB)
-            #     if guarantee[num_higher] > -pointDiff:
-            #         matrix[i][j] = 1
-            #         continue
-            # if maxB > maxA:
-            #     num_higher = sum(1 for card in cardsB if card > maxA)
-            #     if guarantee[num_higher] > pointDiff:
-            #         matrix[i][j] = -1
-            #         continue
-
             
             newA = cardsA[:i] + cardsA[i+1:]
             newB = cardsB[:j] + cardsB[j+1:]
@@ -162,35 +180,35 @@ def full(n):
     return tuple(i for i in range(1, n + 1))
 
 #check how long it takes
+if __name__ == "__main__":
+    for i in range(1, 8):
+        start_time = time.time()
+        print(f"Calculating EV for full({i})...")
+        
+        # Get cache info before calculation
+        cache_before = calculateEV.cache_info()
+        
+        ev = calculateEV(full(i), full(i), 0, full(i), i - 1, "p")
+        
+        # Get cache info after calculation
+        cache_after = calculateEV.cache_info()
+        
+        end_time = time.time()
+        
+        # Calculate cache statistics for this iteration
+        new_hits = cache_after.hits - cache_before.hits
+        new_misses = cache_after.misses - cache_before.misses
+        total_calls = new_hits + new_misses
+        hit_rate = (new_hits / total_calls * 100) if total_calls > 0 else 0
+        
+        print(f"EV for full({i}) = {ev}")
+        print(f"Time taken: {end_time - start_time:.3f} seconds")
+        print(f"Cache hits: {new_hits}, misses: {new_misses}, hit rate: {hit_rate:.1f}%")
+        print(f"Total cache size: {cache_after.currsize} entries")
+        print(f"Cumulative hits: {cache_after.hits}, misses: {cache_after.misses}")
+        print()
 
-for i in range(1, 7):
-    start_time = time.time()
-    print(f"Calculating EV for full({i})...")
-    
-    # Get cache info before calculation
-    cache_before = calculateEV.cache_info()
-    
-    ev = calculateEV(full(i), full(i), 0, full(i), i - 1, "p")
-    
-    # Get cache info after calculation
-    cache_after = calculateEV.cache_info()
-    
-    end_time = time.time()
-    
-    # Calculate cache statistics for this iteration
-    new_hits = cache_after.hits - cache_before.hits
-    new_misses = cache_after.misses - cache_before.misses
-    total_calls = new_hits + new_misses
-    hit_rate = (new_hits / total_calls * 100) if total_calls > 0 else 0
-    
-    print(f"EV for full({i}) = {ev}")
-    print(f"Time taken: {end_time - start_time:.3f} seconds")
-    print(f"Cache hits: {new_hits}, misses: {new_misses}, hit rate: {hit_rate:.1f}%")
-    print(f"Total cache size: {cache_after.currsize} entries")
-    print(f"Cumulative hits: {cache_after.hits}, misses: {cache_after.misses}")
-    print()
-
-# Final cache summary
-print("Final cache statistics:")
-print(calculateEV.cache_info())
+    # Final cache summary
+    print("Final cache statistics:")
+    print(calculateEV.cache_info())
 
