@@ -4,6 +4,8 @@ import time
 import numpy as np
 from typing import Optional, Union
 from functools import lru_cache
+import cProfile
+import pstats
 
 # Omg it's the spaceship operator
 def cmp(a: Union[int, float], b: Union[int, float]) -> int:
@@ -34,6 +36,7 @@ def compress_cards(cardsA: tuple[int, ...], cardsB: tuple[int, ...]) -> tuple[tu
     return compressed_A, compressed_B
 
 def findBestStrategy(payoffMatrix: np.ndarray) -> tuple[Optional[np.ndarray], Optional[float]]:
+    print(payoffMatrix)
     """
     Given a n x n payoff matrix, returns p, the probabilities for the best strategy, and v, the expected value.
     
@@ -117,6 +120,11 @@ def guaranteed(cardsA: tuple[int, ...], cardsB: tuple[int, ...], pointDiff: int,
     else:
         return 0
 
+@lru_cache(maxsize=None)
+def findBestStrategy_cached(matrix_tuple):
+    """Cache linear programming results"""
+    matrix = np.array(matrix_tuple)
+    return findBestStrategy(matrix)
 
 @lru_cache(maxsize=None)
 def calculateEV(cardsA: tuple[int, ...], cardsB: tuple[int, ...], pointDiff: int, prizes: tuple[int, ...], prizeIndex: int, returnType: str) -> Union[int, float]:
@@ -172,7 +180,8 @@ def calculateEV(cardsA: tuple[int, ...], cardsB: tuple[int, ...], pointDiff: int
     if returnType == "m":
         return matrix
 
-    p, v = findBestStrategy(matrix)
+    matrix_tuple = tuple(tuple(row) for row in matrix)
+    p, v = findBestStrategy_cached(matrix_tuple)
 
     if returnType == "p":
         return p
@@ -185,34 +194,50 @@ def full(n):
 
 #check how long it takes
 if __name__ == "__main__":
-    for i in range(1, 9):
-        start_time = time.time()
-        print(f"Calculating EV for full({i})...")
-        
-        # Get cache info before calculation
-        cache_before = calculateEV.cache_info()
-        
-        ev = calculateEV(full(i), full(i), 0, full(i), i - 1, "p")
-        
-        # Get cache info after calculation
-        cache_after = calculateEV.cache_info()
-        
-        end_time = time.time()
-        
-        # Calculate cache statistics for this iteration
-        new_hits = cache_after.hits - cache_before.hits
-        new_misses = cache_after.misses - cache_before.misses
-        total_calls = new_hits + new_misses
-        hit_rate = (new_hits / total_calls * 100) if total_calls > 0 else 0
-        
-        print(f"EV for full({i}) = {ev}")
-        print(f"Time taken: {end_time - start_time:.3f} seconds")
-        print(f"Cache hits: {new_hits}, misses: {new_misses}, hit rate: {hit_rate:.1f}%")
-        print(f"Total cache size: {cache_after.currsize} entries")
-        print(f"Cumulative hits: {cache_after.hits}, misses: {cache_after.misses}")
-        print()
 
-    # Final cache summary
-    print("Final cache statistics:")
-    print(calculateEV.cache_info())
+    if True:
+        for i in range(1, 9):
+            start_time = time.time()
+            print(f"Calculating EV for full({i})...")
+            
+            # Get cache info before calculation
+            cache_before = calculateEV.cache_info()
+            
+            ev = calculateEV(full(i), full(i), 0, full(i), i - 1, "p")
+            
+            # Get cache info after calculation
+            cache_after = calculateEV.cache_info()
+            
+            end_time = time.time()
+            
+            # Calculate cache statistics for this iteration
+            new_hits = cache_after.hits - cache_before.hits
+            new_misses = cache_after.misses - cache_before.misses
+            total_calls = new_hits + new_misses
+            hit_rate = (new_hits / total_calls * 100) if total_calls > 0 else 0
+            
+            print(f"EV for full({i}) = {ev}")
+            print(f"Time taken: {end_time - start_time:.3f} seconds")
+            print(f"Cache hits: {new_hits}, misses: {new_misses}, hit rate: {hit_rate:.1f}%")
+            print(f"Total cache size: {cache_after.currsize} entries")
+            print(f"Cumulative hits: {cache_after.hits}, misses: {cache_after.misses}")
+            print()
+
+        # Final cache summary
+        print("Final cache statistics:")
+        print(calculateEV.cache_info())
+
+    if False:
+        pr = cProfile.Profile()
+        pr.enable()
+        
+        # Run the calculation you want to profile
+        ev = calculateEV(full(6), full(6), 0, full(6), 5, "p")
+        
+        pr.disable()
+        
+        # Print results
+        stats = pstats.Stats(pr)
+        stats.sort_stats('cumulative')
+        stats.print_stats(20)  # Show top 20 functions
 
