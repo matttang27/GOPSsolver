@@ -130,6 +130,10 @@ def calculateEV(cardsA: tuple[int, ...], cardsB: tuple[int, ...], pointDiff: int
             return np.array([1])
         if (returnType == "m"):
             return np.matrix([[cmp(pointDiff + (cmp(cardsA[0], cardsB[0]) * prizes[0]), 0)]])
+    
+    #If pointDiff is negative, swap players to reduce number of unique states
+    if pointDiff < 0 and returnType == "v":
+        return -calculateEV(cardsB, cardsA, -pointDiff, prizes, prizeIndex, "v")
 
     cardsLeft = len(cardsA)
     matrix = np.zeros((cardsLeft, cardsLeft))
@@ -181,7 +185,7 @@ def full(n):
 
 #check how long it takes
 if __name__ == "__main__":
-    for i in range(1, 8):
+    for i in range(1, 9):
         start_time = time.time()
         print(f"Calculating EV for full({i})...")
         
