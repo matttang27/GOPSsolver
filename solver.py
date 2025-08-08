@@ -7,6 +7,9 @@ from functools import lru_cache
 import cProfile
 import pstats
 
+totalCalculated = 0
+guarantee = 0
+caught = 0
 # Omg it's the spaceship operator
 def cmp(a: Union[int, float], b: Union[int, float]) -> int:
     """Compare two numbers and return -1, 0, or 1 (spaceship operator)."""
@@ -168,6 +171,9 @@ def calculateEV(cardsA: tuple[int, ...], cardsB: tuple[int, ...], pointDiff: int
     #If pointDiff is negative, swap players to reduce number of unique states
     if pointDiff < 0 and returnType == "v":
         return -calculateEV(cardsB, cardsA, -pointDiff, prizes, prizeIndex, "v")
+    
+    global totalCalculated, guarantee, caught
+    totalCalculated += 1
 
     cardsLeft = len(cardsA)
     matrix = np.zeros((cardsLeft, cardsLeft))
@@ -176,6 +182,8 @@ def calculateEV(cardsA: tuple[int, ...], cardsB: tuple[int, ...], pointDiff: int
 
     alreadyWon = guaranteed(cardsA, cardsB, pointDiff, prizes)
     if (alreadyWon != 0 and returnType == "v"):
+        guarantee += 1
+        caught += 1
         return alreadyWon
 
 
@@ -208,7 +216,10 @@ def calculateEV(cardsA: tuple[int, ...], cardsB: tuple[int, ...], pointDiff: int
 
     matrix_tuple = tuple(tuple(row) for row in matrix)
     if returnType == "v":
-        return findBestStrategy_valueonly_cached(matrix_tuple)
+        v = findBestStrategy_valueonly_cached(matrix_tuple)
+        if (abs(v - 1) < 1e-10 or abs(v + 1) < 1e-10):
+            guarantee += 1
+        return v
     else:
         # Only do full LP when you need probabilities
         p, v = findBestStrategy_cached(matrix_tuple)
@@ -221,11 +232,35 @@ def full(n):
     """Returns a tuple from 1 to n"""
     return tuple(i for i in range(1, n + 1))
 
-#check how long it takes
+# Find threshold point using binary search
 if __name__ == "__main__":
 
     if False:
-        for i in range(1, 9):
+        for i in range(1, 7):
+            # Binary search to find threshold where EV transitions from < 1 to exactly 1
+            left = 0
+            right = 1000
+            threshold = -1
+            
+            while left <= right:
+                mid = (left + right) // 2
+                ev_current = calculateEV(full(i), full(i), mid, full(i), i - 1, "v")
+                
+                if ev_current >= 1:
+                    threshold = mid
+                    right = mid - 1  # Search for a smaller threshold
+                else:
+                    left = mid + 1   # Search for a larger threshold
+                    
+            if threshold != -1:
+                ev_at_threshold = calculateEV(full(i), full(i), threshold, full(i), i - 1, "v")
+                ev_before = calculateEV(full(i), full(i), threshold - 1, full(i), i - 1, "v") if threshold > 0 else 0
+                print(f"For full({i}), threshold at pointDiff = {threshold} (EV: {ev_at_threshold}), previous {threshold-1} (EV: {ev_before})")
+            else:
+                print(f"For full({i}), threshold is higher than 1000")
+    
+    if True:
+        for i in range(1, 8):
             start_time = time.time()
             print(f"Calculating EV for full({i})...")
             
@@ -250,13 +285,16 @@ if __name__ == "__main__":
             print(f"Cache hits: {new_hits}, misses: {new_misses}, hit rate: {hit_rate:.1f}%")
             print(f"Total cache size: {cache_after.currsize} entries")
             print(f"Cumulative hits: {cache_after.hits}, misses: {cache_after.misses}")
-            print()
+            if (totalCalculated > 0 and guarantee > 0):
+                print(totalCalculated, guarantee, caught)
+                print(f"Guaranteed is {guarantee / totalCalculated * 100} %")
+                print(f"Caught {caught / guarantee * 100} % of guarantees")
 
         # Final cache summary
         print("Final cache statistics:")
         print(calculateEV.cache_info())
 
-    if True:
+    if False:
         pr = cProfile.Profile()
         pr.enable()
         
