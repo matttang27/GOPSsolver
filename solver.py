@@ -12,6 +12,7 @@ def cmp(a: Union[int, float], b: Union[int, float]) -> int:
     """Compare two numbers and return -1, 0, or 1 (spaceship operator)."""
     return (a > b) - (a < b)
 
+@lru_cache(maxsize=None)
 def compress_cards(cardsA: tuple[int, ...], cardsB: tuple[int, ...]) -> tuple[tuple[int, ...], tuple[int, ...]]:
     """
     Compress card values to remove gaps while preserving relative order.
@@ -36,7 +37,6 @@ def compress_cards(cardsA: tuple[int, ...], cardsB: tuple[int, ...]) -> tuple[tu
     return compressed_A, compressed_B
 
 def findBestStrategy(payoffMatrix: np.ndarray) -> tuple[Optional[np.ndarray], Optional[float]]:
-    print(payoffMatrix)
     """
     Given a n x n payoff matrix, returns p, the probabilities for the best strategy, and v, the expected value.
     
@@ -126,6 +126,32 @@ def findBestStrategy_cached(matrix_tuple):
     matrix = np.array(matrix_tuple)
     return findBestStrategy(matrix)
 
+def findBestStrategy_valueonly(matrix_tuple, payoffMatrix: np.ndarray) -> float:
+    """Ultra-fast value calculation for when you don't need probabilities"""
+    
+    # Quick pure strategy check
+    row_mins = np.min(payoffMatrix, axis=1)
+    max_row_min = np.max(row_mins)
+    
+    col_maxs = np.max(payoffMatrix, axis=0)
+    min_col_max = np.min(col_maxs)
+    
+    if abs(max_row_min - min_col_max) < 1e-10:
+        return max_row_min
+    
+    # # If close enough, use approximation (often sufficient for GOPS)
+    # if abs(max_row_min - min_col_max) < 1:
+    #     return (max_row_min + min_col_max) / 2
+    
+    # Otherwise solve simplified LP - extract just the value from the tuple
+    p, v = findBestStrategy_cached(matrix_tuple)
+    return v  # Return just the value, not the tuple
+
+def findBestStrategy_valueonly_cached(matrix_tuple):
+    """Cache value-only results"""
+    matrix = np.array(matrix_tuple)
+    return findBestStrategy_valueonly(matrix_tuple, matrix)
+
 @lru_cache(maxsize=None)
 def calculateEV(cardsA: tuple[int, ...], cardsB: tuple[int, ...], pointDiff: int, prizes: tuple[int, ...], prizeIndex: int, returnType: str) -> Union[int, float]:
     """
@@ -181,12 +207,15 @@ def calculateEV(cardsA: tuple[int, ...], cardsB: tuple[int, ...], pointDiff: int
         return matrix
 
     matrix_tuple = tuple(tuple(row) for row in matrix)
-    p, v = findBestStrategy_cached(matrix_tuple)
-
-    if returnType == "p":
-        return p
+    if returnType == "v":
+        return findBestStrategy_valueonly_cached(matrix_tuple)
     else:
-        return v
+        # Only do full LP when you need probabilities
+        p, v = findBestStrategy_cached(matrix_tuple)
+        return p if returnType == "p" else v
+
+
+
 
 def full(n):
     """Returns a tuple from 1 to n"""
@@ -195,7 +224,7 @@ def full(n):
 #check how long it takes
 if __name__ == "__main__":
 
-    if True:
+    if False:
         for i in range(1, 9):
             start_time = time.time()
             print(f"Calculating EV for full({i})...")
@@ -227,12 +256,12 @@ if __name__ == "__main__":
         print("Final cache statistics:")
         print(calculateEV.cache_info())
 
-    if False:
+    if True:
         pr = cProfile.Profile()
         pr.enable()
         
         # Run the calculation you want to profile
-        ev = calculateEV(full(6), full(6), 0, full(6), 5, "p")
+        ev = calculateEV(full(7), full(7), 0, full(7), 6, "p")
         
         pr.disable()
         
