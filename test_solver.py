@@ -31,10 +31,11 @@ class TestGOPSFunctions(unittest.TestCase):
             [0.0, 0.0, 1.0],  # full(3)
             [0.0, 0.0, 0.0, 1.0],  # full(4)
             [0.14442317, 0.01535358, 0.0, 0.0, 0.84022325],  # full(5)
-            [0.0, 0.17682883, 0.00787058, 0.0, 0.0, 0.81530059]  # full(6)
+            [0.0, 0.17682883, 0.00787058, 0.0, 0.0, 0.81530059],  # full(6)
+            [0.01208932, 0.0,         0.18579355, 0.0,         0.0,         0.0, 0.80211714], #full(7)
         ]
-        
-        for i in range(1, 7):
+
+        for i in range(1, 8):
             with self.subTest(i=i):
                 result = calculateEV(full(i), full(i), 0, full(i), i - 1, "p")
                 expected = np.array(expected_strategies[i-1])

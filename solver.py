@@ -1,7 +1,8 @@
 from __future__ import annotations
-from scipy.optimize import linprog
+from ortools.linear_solver import pywraplp
 import time
 import numpy as np
+from scipy.optimize import linprog
 from typing import Optional, Union
 from functools import lru_cache
 import cProfile
@@ -10,6 +11,7 @@ import pstats
 totalCalculated = 0
 guarantee = 0
 caught = 0
+ortools_fails = 0
 # Omg it's the spaceship operator
 def cmp(a: Union[int, float], b: Union[int, float]) -> int:
     """Compare two numbers and return -1, 0, or 1 (spaceship operator)."""
@@ -39,6 +41,35 @@ def compress_cards(cardsA: tuple[int, ...], cardsB: tuple[int, ...]) -> tuple[tu
     
     return compressed_A, compressed_B
 
+def findBestStrategy_scipy_fallback(payoffMatrix: np.ndarray) -> tuple[Optional[np.ndarray], Optional[float]]:
+    """
+    Fallback to SciPy when OR-Tools fails.
+    """
+    numRows, numCols = payoffMatrix.shape
+    c = np.zeros(numRows + 1)
+    c[-1] = -1  # maximize v
+    
+    A_ub = []
+    b_ub = []
+    for j in range(numCols):
+        row = [-payoffMatrix[i][j] for i in range(numRows)] + [1]
+        A_ub.append(row)
+        b_ub.append(0)
+    
+    A_eq = [[1]*numRows + [0]]
+    b_eq = [1]
+    bounds = [(0, None)]*numRows + [(None, None)]
+    
+    res = linprog(c, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, 
+                 bounds=bounds, method='highs')
+    
+    if res.success:
+        probabilities = res.x[:-1]
+        expected_value = -res.fun
+        return probabilities, expected_value
+    else:
+        return None, None
+
 def findBestStrategy(payoffMatrix: np.ndarray) -> tuple[Optional[np.ndarray], Optional[float]]:
     """
     Given a n x n payoff matrix, returns p, the probabilities for the best strategy, and v, the expected value.
@@ -49,35 +80,47 @@ def findBestStrategy(payoffMatrix: np.ndarray) -> tuple[Optional[np.ndarray], Op
     Returns:
         Tuple of (probability distribution, expected value) or (None, None) if failed
     """
+
+    global ortools_fails
     numRows, numCols = payoffMatrix.shape
-    # Variables: p_0, ..., p_{numRows-1}, v
-    c = np.zeros(numRows + 1)
-    c[-1] = -1  # maximize v (minimize -v)
-
-    # For each column, constraint: sum_i p_i * payoffMatrix[i][j] >= v
-    # → -sum_i p_i * payoffMatrix[i][j] + v <= 0
-    A_ub = []
-    b_ub = []
-    for j in range(numCols):
-        row = [-payoffMatrix[i][j] for i in range(numRows)] + [1]
-        A_ub.append(row)
-        b_ub.append(0)
-
-    # Probabilities sum to 1
-    A_eq = [ [1]*numRows + [0] ]
-    b_eq = [1]
-
-    # Probabilities in [0,1], v unbounded
-    bounds = [(0, 1)] * numRows + [(None, None)]
-
-    res = linprog(c, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
-
-    if res.success:
-        p = res.x[:-1]
-        v = res.x[-1]
-        return p, v
-    else:
+    
+    # Create solver
+    solver = pywraplp.Solver.CreateSolver('GLOP')
+    if not solver:
         return None, None
+    
+    # Variables: p_0, ..., p_{numRows-1}, v
+    p = [solver.NumVar(0, solver.infinity(), f'p_{i}') for i in range(numRows)]
+    v = solver.NumVar(-solver.infinity(), solver.infinity(), 'v')
+    
+    # Constraints: sum_i p_i * M[i,j] >= v for all j
+    for j in range(numCols):
+        constraint = solver.Constraint(0, solver.infinity())
+        for i in range(numRows):
+            constraint.SetCoefficient(p[i], payoffMatrix[i, j])
+        constraint.SetCoefficient(v, -1)
+    
+    # Probability constraint: sum_i p_i = 1
+    prob_constraint = solver.Constraint(1, 1)
+    for i in range(numRows):
+        prob_constraint.SetCoefficient(p[i], 1)
+    
+    # Objective: maximize v
+    objective = solver.Objective()
+    objective.SetCoefficient(v, 1)
+    objective.SetMaximization()
+    
+    # Solve
+    status = solver.Solve()
+    
+    if status == pywraplp.Solver.OPTIMAL:
+        # Extract solution
+        probabilities = np.array([p[i].solution_value() for i in range(numRows)])
+        game_value = v.solution_value()
+        return probabilities, game_value
+    else:
+        ortools_fails += 1
+        return findBestStrategy_scipy_fallback(payoffMatrix)
 
 def findBestCounterplay(payoffMatrix: np.ndarray, p: np.ndarray) -> None:
     """
@@ -260,7 +303,7 @@ if __name__ == "__main__":
                 print(f"For full({i}), threshold is higher than 1000")
     
     if True:
-        for i in range(1, 8):
+        for i in range(1, 10):
             start_time = time.time()
             print(f"Calculating EV for full({i})...")
             
