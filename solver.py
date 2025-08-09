@@ -132,6 +132,7 @@ if __name__ == "__main__":
             print(f"Cumulative hits: {cache_after.hits}, misses: {cache_after.misses}")
             globals.print_stats()
 
+
     if False:
         pr = cProfile.Profile()
         pr.enable()
