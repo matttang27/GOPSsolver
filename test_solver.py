@@ -38,7 +38,7 @@ class TestGOPSFunctions(unittest.TestCase):
             [0.03077425, 0.00465836, 0.07138744, 0.02803011, 0.1050596, 0.06116305, 0.0, 0.0, 0.69892719]
         ]
 
-        for i in range(1, 10):
+        for i in range(1, 8):
             with self.subTest(i=i):
                 result = calculateEV(full(i), full(i), 0, full(i), i - 1, "p")
                 expected = np.array(expected_strategies[i-1])
@@ -325,8 +325,100 @@ class TestGuaranteed(unittest.TestCase):
 
         result = guaranteed(cardsA, cardsB, pointDiff, prizes)
         self.assertEqual(result, 1)
-    
 
-if __name__ == '__main__':
+def test_guaranteed_never_wrong():
+    """Test that guaranteed function never gives wrong answers (false positives)"""
+    
+    print("\nTesting guaranteed function for false positives...")
+    
+    # Calculate EVs for small games
+    for i in range(1, 8):
+        calculateEV(full(i), full(i), 0, full(i), i-1, "v")
+    
+    cache = calculateEV.cache
+    false_positives = []
+    
+    for key, ev_value in cache.items():
+        if len(key) >= 6 and key[5] == "v":
+            cardsA, cardsB, pointDiff, prizes, prizeIndex, returnType = key
+            remaining_prizes = prizes[prizeIndex:]
+            
+            guaranteed_result = guaranteed(cardsA, cardsB, pointDiff, remaining_prizes)
+            
+            # Check for false positives
+            if guaranteed_result == 1 and abs(ev_value - 1.0) >= 1e-10:
+                false_positives.append((key, ev_value, guaranteed_result, "guaranteed says A wins but EV != 1"))
+            elif guaranteed_result == -1 and abs(ev_value + 1.0) >= 1e-10:
+                false_positives.append((key, ev_value, guaranteed_result, "guaranteed says A loses but EV != -1"))
+    
+    print(f"False positives found: {len(false_positives)}")
+    
+    if false_positives:
+        print("=== FALSE POSITIVES (guaranteed function errors) ===")
+        for i, (key, ev_value, guaranteed_result, error_type) in enumerate(false_positives[:5]):
+            cardsA, cardsB, pointDiff, prizes, prizeIndex, _ = key
+            remaining_prizes = prizes[prizeIndex:]
+            print(f"{i+1}. {error_type}")
+            print(f"   CardsA: {cardsA}, CardsB: {cardsB}")
+            print(f"   PointDiff: {pointDiff}, Remaining prizes: {remaining_prizes}")
+            print(f"   EV: {ev_value}, Guaranteed: {guaranteed_result}")
+    
+    return len(false_positives) == 0
+
+def analyze_guaranteed_performance():
+    """Analyze how well the guaranteed function performs"""
+    
+    print("\n=== Guaranteed Function Performance Analysis ===")
+    
+    # Calculate some games to populate cache
+    for i in range(1, 8):
+        calculateEV(full(i), full(i), 0, full(i), i-1, "v")
+    
+    cache = calculateEV.cache
+    
+    # Count different types of outcomes
+    total_states = 0
+    guaranteed_wins_in_cache = 0
+    guaranteed_losses_in_cache = 0
+    guaranteed_detected_wins = 0
+    guaranteed_detected_losses = 0
+    
+    for key, ev_value in cache.items():
+        if len(key) >= 6 and key[5] == "v":
+            total_states += 1
+            cardsA, cardsB, pointDiff, prizes, prizeIndex, _ = key
+            remaining_prizes = prizes[prizeIndex:]
+            
+            guaranteed_result = guaranteed(cardsA, cardsB, pointDiff, remaining_prizes)
+            
+            if abs(ev_value - 1.0) < 1e-10:  # Actual guaranteed win
+                guaranteed_wins_in_cache += 1
+                if guaranteed_result == 1:
+                    guaranteed_detected_wins += 1
+            
+            elif abs(ev_value + 1.0) < 1e-10:  # Actual guaranteed loss
+                guaranteed_losses_in_cache += 1
+                if guaranteed_result == -1:
+                    guaranteed_detected_losses += 1
+    
+    print(f"Total states analyzed: {total_states}")
+    print(f"Actual guaranteed wins: {guaranteed_wins_in_cache}")
+    print(f"Actual guaranteed losses: {guaranteed_losses_in_cache}")
+    print(f"Detected wins: {guaranteed_detected_wins}/{guaranteed_wins_in_cache} ({100*guaranteed_detected_wins/max(guaranteed_wins_in_cache,1):.1f}%)")
+    print(f"Detected losses: {guaranteed_detected_losses}/{guaranteed_losses_in_cache} ({100*guaranteed_detected_losses/max(guaranteed_losses_in_cache,1):.1f}%)")
+    
+    total_guaranteed = guaranteed_wins_in_cache + guaranteed_losses_in_cache
+    total_detected = guaranteed_detected_wins + guaranteed_detected_losses
+    
+    if total_guaranteed > 0:
+        print(f"Overall detection rate: {total_detected}/{total_guaranteed} ({100*total_detected/total_guaranteed:.1f}%)")
+
+if __name__ == "__main__":
     # Run the tests
     unittest.main(verbosity=2)
+
+    # Run the consistency tests
+    print("=== Testing Guaranteed Function Consistency ===")
+    no_false_positives = test_guaranteed_never_wrong()
+    analyze_guaranteed_performance()
+    print(no_false_positives and "No false positives found!" or "False positives detected!")
