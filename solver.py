@@ -3,7 +3,7 @@
 from __future__ import annotations
 import numpy as np
 from typing import Union
-from functools import lru_cache
+from cache import lru_cache
 from multiprocessing import Manager, Pool, active_children
 
 
@@ -35,6 +35,7 @@ def calculateEV(cardsA: tuple[int, ...], cardsB: tuple[int, ...], pointDiff: int
     matrix = np.zeros((cardsLeft, cardsLeft))
 
     # Check for guaranteed win
+    #dominance = check_dominance_guaranteed(cardsA, cardsB, pointDiff, prizes)
     alreadyWon = guaranteed(cardsA, cardsB, pointDiff, prizes)
     if (alreadyWon != 0 and returnType == "v"):
         globals.guarantee += 1

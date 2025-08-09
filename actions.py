@@ -1,7 +1,6 @@
 import time
 import cProfile
 import pstats
-from functools import lru_cache
 import globals
 from solver import calculateEV
 from utils import full
@@ -9,7 +8,7 @@ from utils import full
 
 
 def runFull():
-    for i in range(1, 10):
+    for i in range(1, 7):
         start_time = time.time()
         print(f"Calculating EV for full({i})...")
 
@@ -36,6 +35,7 @@ def runFull():
         )
         print(f"Total cache size: {cache_after.currsize} entries")
         print(f"Cumulative hits: {cache_after.hits}, misses: {cache_after.misses}")
+        print(calculateEV.cache)
         globals.print_stats()
 
 

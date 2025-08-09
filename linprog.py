@@ -4,7 +4,7 @@ import numpy as np
 from ortools.linear_solver import pywraplp
 from scipy.optimize import linprog
 from typing import Optional
-from functools import lru_cache
+from cache import lru_cache
 import globals
 
 def findBestStrategy_scipy_fallback(payoffMatrix: np.ndarray) -> tuple[Optional[np.ndarray], Optional[float]]:
