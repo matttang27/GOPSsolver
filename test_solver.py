@@ -1,7 +1,8 @@
 import unittest
 import numpy as np
-from solver import full, cmp, findBestStrategy, findBestCounterplay, calculateEV, compress_cards, guaranteed
-
+from solver import calculateEV
+from utils import cmp, full, compress_cards, guaranteed
+from linprog import findBestStrategy, findBestCounterplay
 
 class TestGOPSFunctions(unittest.TestCase):
     
@@ -26,13 +27,14 @@ class TestGOPSFunctions(unittest.TestCase):
         """Test that calculateEV returns known correct probability distributions"""
         # Known correct probability distributions for full(i) vs full(i)
         expected_strategies = [
-            [1.0],  # full(1)
-            [0.0, 1.0],  # full(2)
-            [0.0, 0.0, 1.0],  # full(3)
-            [0.0, 0.0, 0.0, 1.0],  # full(4)
-            [0.14442317, 0.01535358, 0.0, 0.0, 0.84022325],  # full(5)
-            [0.0, 0.17682883, 0.00787058, 0.0, 0.0, 0.81530059],  # full(6)
-            [0.01208932, 0.0,         0.18579355, 0.0,         0.0,         0.0, 0.80211714], #full(7)
+            [1.0],
+            [0.0, 1.0],
+            [0.0, 0.0, 1.0],
+            [0.0, 0.0, 0.0, 1.0],
+            [0.14442317, 0.01535358, 0.0, 0.0, 0.84022325],
+            [0.0, 0.17682883, 0.00787058, 0.0, 0.0, 0.81530059],
+            [0.01208932, 0.0, 0.18579355, 0.0, 0.0, 0.0, 0.80211714],
+            [0.0, 0.0875914, 0.00944292, 0.11884979, 0.05435713, 0.0, 0.0, 0.72975876]
         ]
 
         for i in range(1, 8):

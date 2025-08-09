@@ -1,208 +1,20 @@
+"""Main GOPS solver"""
+
 from __future__ import annotations
-from ortools.linear_solver import pywraplp
 import time
 import numpy as np
-from scipy.optimize import linprog
-from typing import Optional, Union
+from typing import Union
 from functools import lru_cache
-import cProfile
-import pstats
 
-totalCalculated = 0
-guarantee = 0
-caught = 0
-ortools_fails = 0
-# Omg it's the spaceship operator
-def cmp(a: Union[int, float], b: Union[int, float]) -> int:
-    """Compare two numbers and return -1, 0, or 1 (spaceship operator)."""
-    return (a > b) - (a < b)
+import globals
+from linprog import findBestStrategy_valueonly_cached, findBestStrategy_cached
+from utils import cmp, compress_cards, guaranteed, full
 
 @lru_cache(maxsize=None)
-def compress_cards(cardsA: tuple[int, ...], cardsB: tuple[int, ...]) -> tuple[tuple[int, ...], tuple[int, ...]]:
-    """
-    Compress card values to remove gaps while preserving relative order.
+def calculateEV(cardsA: tuple[int, ...], cardsB: tuple[int, ...], pointDiff: int, 
+               prizes: tuple[int, ...], prizeIndex: int, returnType: str) -> Union[int, float]:
+    """Calculate the expected value for the current game state (cached version)."""
     
-    Args:
-        cardsA: First player's cards
-        cardsB: Second player's cards
-    
-    Returns:
-        Tuple of (compressed_cardsA, compressed_cardsB)
-    """
-    # Get all unique values and sort them
-    all_values = sorted(set(cardsA) | set(cardsB))
-    
-    # Create mapping from old values to new compressed values
-    value_map = {old_val: new_val for new_val, old_val in enumerate(all_values, 1)}
-    
-    # Apply mapping to both card sets
-    compressed_A = tuple(value_map[card] for card in cardsA)
-    compressed_B = tuple(value_map[card] for card in cardsB)
-    
-    return compressed_A, compressed_B
-
-def findBestStrategy_scipy_fallback(payoffMatrix: np.ndarray) -> tuple[Optional[np.ndarray], Optional[float]]:
-    """
-    Fallback to SciPy when OR-Tools fails.
-    """
-    numRows, numCols = payoffMatrix.shape
-    c = np.zeros(numRows + 1)
-    c[-1] = -1  # maximize v
-    
-    A_ub = []
-    b_ub = []
-    for j in range(numCols):
-        row = [-payoffMatrix[i][j] for i in range(numRows)] + [1]
-        A_ub.append(row)
-        b_ub.append(0)
-    
-    A_eq = [[1]*numRows + [0]]
-    b_eq = [1]
-    bounds = [(0, None)]*numRows + [(None, None)]
-    
-    res = linprog(c, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, 
-                 bounds=bounds, method='highs')
-    
-    if res.success:
-        probabilities = res.x[:-1]
-        expected_value = -res.fun
-        return probabilities, expected_value
-    else:
-        return None, None
-
-def findBestStrategy(payoffMatrix: np.ndarray) -> tuple[Optional[np.ndarray], Optional[float]]:
-    """
-    Given a n x n payoff matrix, returns p, the probabilities for the best strategy, and v, the expected value.
-    
-    Args:
-        payoffMatrix: n x m numpy array representing the payoff matrix
-        
-    Returns:
-        Tuple of (probability distribution, expected value) or (None, None) if failed
-    """
-
-    global ortools_fails
-    numRows, numCols = payoffMatrix.shape
-    
-    # Create solver
-    solver = pywraplp.Solver.CreateSolver('GLOP')
-    if not solver:
-        return None, None
-    
-    # Variables: p_0, ..., p_{numRows-1}, v
-    p = [solver.NumVar(0, solver.infinity(), f'p_{i}') for i in range(numRows)]
-    v = solver.NumVar(-solver.infinity(), solver.infinity(), 'v')
-    
-    # Constraints: sum_i p_i * M[i,j] >= v for all j
-    for j in range(numCols):
-        constraint = solver.Constraint(0, solver.infinity())
-        for i in range(numRows):
-            constraint.SetCoefficient(p[i], payoffMatrix[i, j])
-        constraint.SetCoefficient(v, -1)
-    
-    # Probability constraint: sum_i p_i = 1
-    prob_constraint = solver.Constraint(1, 1)
-    for i in range(numRows):
-        prob_constraint.SetCoefficient(p[i], 1)
-    
-    # Objective: maximize v
-    objective = solver.Objective()
-    objective.SetCoefficient(v, 1)
-    objective.SetMaximization()
-    
-    # Solve
-    status = solver.Solve()
-    
-    if status == pywraplp.Solver.OPTIMAL:
-        # Extract solution
-        probabilities = np.array([p[i].solution_value() for i in range(numRows)])
-        game_value = v.solution_value()
-        return probabilities, game_value
-    else:
-        ortools_fails += 1
-        return findBestStrategy_scipy_fallback(payoffMatrix)
-
-def findBestCounterplay(payoffMatrix: np.ndarray, p: np.ndarray) -> None:
-    """
-    Find and print the opponent's best counterplay strategy.
-    
-    Args:
-        payoffMatrix: The game's payoff matrix
-        p: Probability distribution for row player's strategy
-    """
-    ev_cols = [sum(p[i] * payoffMatrix[i][j] for i in range(payoffMatrix.shape[0])) for j in range(payoffMatrix.shape[1])]
-    worst = min(ev_cols)
-    worst_col = ev_cols.index(worst)
-    
-    print(f"Counterplay → min EV = {worst:.3f} (vs col {worst_col}), p = {p}")
-
-def guaranteed(cardsA: tuple[int, ...], cardsB: tuple[int, ...], pointDiff: int, prizes: tuple[int, ...]) -> int:
-    """
-    Check if one side has enough cards higher than the other to guarantee a win.
-    Checks also if one side has enough pointDiff even if they don't have higher cards.
-    
-    Args:
-        cardsA: First player's cards
-        cardsB: Second player's cards
-        pointDiff: Current point difference
-        prizes: Remaining prize cards
-        
-    Returns:
-        1 if A is guaranteed, -1 if B is guaranteed, 0 otherwise.
-    """
-    # Guarantee array: guarantee[i] = sum of i largest prizes - sum of remaining prizes.
-    # If you have X cards higher than the entire other side, you get a minimum of guarantee[X] points.
-    cardsLeft = len(prizes)
-    sorted_prizes = sorted(prizes, reverse=True)  # Sort descending to get largest first
-    guarantee = [sum(sorted_prizes[:i]) - sum(sorted_prizes[i:]) for i in range(cardsLeft + 1)]
-    [-6, 0, 4, 6]
-    guaranteeA = sum(1 for card in cardsA if card > cardsB[-1])
-    guaranteeB = sum(1 for card in cardsB if card > cardsA[-1])
-    
-    if (guarantee[guaranteeA] + pointDiff) > 0:
-        return 1
-    elif (pointDiff - guarantee[guaranteeB]) < 0:
-        return -1
-    else:
-        return 0
-
-@lru_cache(maxsize=None)
-def findBestStrategy_cached(matrix_tuple):
-    """Cache linear programming results"""
-    matrix = np.array(matrix_tuple)
-    return findBestStrategy(matrix)
-
-def findBestStrategy_valueonly(matrix_tuple, payoffMatrix: np.ndarray) -> float:
-    """Ultra-fast value calculation for when you don't need probabilities"""
-    
-    # Quick pure strategy check
-    row_mins = np.min(payoffMatrix, axis=1)
-    max_row_min = np.max(row_mins)
-    
-    col_maxs = np.max(payoffMatrix, axis=0)
-    min_col_max = np.min(col_maxs)
-    
-    if abs(max_row_min - min_col_max) < 1e-10:
-        return max_row_min
-    
-    # # If close enough, use approximation (often sufficient for GOPS)
-    # if abs(max_row_min - min_col_max) < 1:
-    #     return (max_row_min + min_col_max) / 2
-    
-    # Otherwise solve simplified LP - extract just the value from the tuple
-    p, v = findBestStrategy_cached(matrix_tuple)
-    return v  # Return just the value, not the tuple
-
-def findBestStrategy_valueonly_cached(matrix_tuple):
-    """Cache value-only results"""
-    matrix = np.array(matrix_tuple)
-    return findBestStrategy_valueonly(matrix_tuple, matrix)
-
-@lru_cache(maxsize=None)
-def calculateEV(cardsA: tuple[int, ...], cardsB: tuple[int, ...], pointDiff: int, prizes: tuple[int, ...], prizeIndex: int, returnType: str) -> Union[int, float]:
-    """
-    Calculate the expected value for the current game state (cached version).
-    """
     if len(cardsA) == 1:
         if (returnType == "v"): 
             return cmp(pointDiff + (cmp(cardsA[0], cardsB[0]) * prizes[0]), 0)
@@ -211,25 +23,24 @@ def calculateEV(cardsA: tuple[int, ...], cardsB: tuple[int, ...], pointDiff: int
         if (returnType == "m"):
             return np.matrix([[cmp(pointDiff + (cmp(cardsA[0], cardsB[0]) * prizes[0]), 0)]])
     
-    #If pointDiff is negative, swap players to reduce number of unique states
+    # If pointDiff is negative, swap players to reduce number of unique states
     if pointDiff < 0 and returnType == "v":
         return -calculateEV(cardsB, cardsA, -pointDiff, prizes, prizeIndex, "v")
     
-    global totalCalculated, guarantee, caught
-    totalCalculated += 1
+    # Update global counters
+    globals.totalCalculated += 1
 
     cardsLeft = len(cardsA)
     matrix = np.zeros((cardsLeft, cardsLeft))
 
-    
-
+    # Check for guaranteed win
     alreadyWon = guaranteed(cardsA, cardsB, pointDiff, prizes)
     if (alreadyWon != 0 and returnType == "v"):
-        guarantee += 1
-        caught += 1
+        globals.guarantee += 1
+        globals.caught += 1
         return alreadyWon
 
-
+    # Calculate matrix
     for i in range(cardsLeft):
         for j in range(cardsLeft):
             if cardsA == cardsB and pointDiff == 0:
@@ -242,15 +53,13 @@ def calculateEV(cardsA: tuple[int, ...], cardsB: tuple[int, ...], pointDiff: int
             
             newA = cardsA[:i] + cardsA[i+1:]
             newB = cardsB[:j] + cardsB[j+1:]
-
             newA, newB = compress_cards(newA, newB)
             newDiff = pointDiff + cmp(cardsA[i], cardsB[j]) * prizes[prizeIndex]
             newPrizes = prizes[:prizeIndex] + prizes[prizeIndex+1:]
-            ev = 0.0
             
+            ev = 0.0
             for k in range(cardsLeft - 1):
                 ev += calculateEV(newA, newB, newDiff, newPrizes, k, "v")
-
             ev /= cardsLeft - 1
             matrix[i][j] = ev
 
@@ -261,23 +70,16 @@ def calculateEV(cardsA: tuple[int, ...], cardsB: tuple[int, ...], pointDiff: int
     if returnType == "v":
         v = findBestStrategy_valueonly_cached(matrix_tuple)
         if (abs(v - 1) < 1e-10 or abs(v + 1) < 1e-10):
-            guarantee += 1
+            globals.guarantee += 1
         return v
     else:
         # Only do full LP when you need probabilities
         p, v = findBestStrategy_cached(matrix_tuple)
         return p if returnType == "p" else v
 
-
-
-
-def full(n):
-    """Returns a tuple from 1 to n"""
-    return tuple(i for i in range(1, n + 1))
-
-# Find threshold point using binary search
 if __name__ == "__main__":
-
+    
+    # Find threshold point using binary search
     if False:
         for i in range(1, 7):
             # Binary search to find threshold where EV transitions from < 1 to exactly 1
@@ -328,14 +130,7 @@ if __name__ == "__main__":
             print(f"Cache hits: {new_hits}, misses: {new_misses}, hit rate: {hit_rate:.1f}%")
             print(f"Total cache size: {cache_after.currsize} entries")
             print(f"Cumulative hits: {cache_after.hits}, misses: {cache_after.misses}")
-            if (totalCalculated > 0 and guarantee > 0):
-                print(totalCalculated, guarantee, caught)
-                print(f"Guaranteed is {guarantee / totalCalculated * 100} %")
-                print(f"Caught {caught / guarantee * 100} % of guarantees")
-
-        # Final cache summary
-        print("Final cache statistics:")
-        print(calculateEV.cache_info())
+            globals.print_stats()
 
     if False:
         pr = cProfile.Profile()
