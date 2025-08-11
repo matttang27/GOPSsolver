@@ -80,3 +80,5 @@ def calculateEV(cardsA: tuple[int, ...], cardsB: tuple[int, ...], pointDiff: int
         return p if returnType == "p" else v
 
 
+if __name__ == "__main__":
+    print(calculateEV((1, 2, 3), (1,2,3), 0, (1, 2, 3), 0, ""))

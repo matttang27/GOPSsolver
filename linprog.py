@@ -8,6 +8,29 @@ from cache import lru_cache
 import globals
 import time
 
+solver_cache = {}
+
+def get_solver_for_size(numRows, numCols):
+    key = (numRows, numCols)
+    if key in solver_cache:
+        return solver_cache[key]
+    solver = pywraplp.Solver.CreateSolver('GLOP')
+    # Attach variables as attributes
+    solver.p = [solver.NumVar(0, solver.infinity(), f'p_{i}') for i in range(numRows)]
+    solver.v = solver.NumVar(-solver.infinity(), solver.infinity(), 'v')
+    solver.constraints = []
+    for j in range(numCols):
+        constraint = solver.Constraint(0, solver.infinity())
+        solver.constraints.append(constraint)
+    prob_constraint = solver.Constraint(1, 1)
+    for i in range(numRows):
+        prob_constraint.SetCoefficient(solver.p[i], 1)
+    objective = solver.Objective()
+    objective.SetCoefficient(solver.v, 1)
+    objective.SetMaximization()
+    solver_cache[key] = solver
+    return solver
+
 def findBestStrategy_scipy_fallback(payoffMatrix: np.ndarray) -> tuple[Optional[np.ndarray], Optional[float]]:
     """Fallback to SciPy when OR-Tools fails."""
     numRows, numCols = payoffMatrix.shape
@@ -39,79 +62,22 @@ def findBestStrategy(payoffMatrix: np.ndarray) -> tuple[Optional[np.ndarray], Op
     """OR-Tools linear programming solver with SciPy fallback"""
 
     numRows, numCols = payoffMatrix.shape
-
     t0 = time.perf_counter()
-    solver = pywraplp.Solver.CreateSolver('GLOP')
+    solver = get_solver_for_size(numRows, numCols)
     t1 = time.perf_counter()
+    p = solver.p
+    v = solver.v
 
-    if not solver:
-        return None, None
-
-    # Variables: p_0, ..., p_{numRows-1}, v
-    p = [solver.NumVar(0, solver.infinity(), f'p_{i}') for i in range(numRows)]
-    v = solver.NumVar(-solver.infinity(), solver.infinity(), 'v')
-    t2 = time.perf_counter()
-
-    # Constraints: sum_i p_i * M[i,j] >= v for all j
+    # Update constraint coefficients here if needed
+    # Update constraint coefficients for the current payoffMatrix
     for j in range(numCols):
-        constraint = solver.Constraint(0, solver.infinity())
+        constraint = solver.constraints[j]
+        constraint.Clear()
         for i in range(numRows):
             constraint.SetCoefficient(p[i], payoffMatrix[i, j])
         constraint.SetCoefficient(v, -1)
-    t3 = time.perf_counter()
 
-    # Probability constraint: sum_i p_i = 1
-    prob_constraint = solver.Constraint(1, 1)
-    for i in range(numRows):
-        prob_constraint.SetCoefficient(p[i], 1)
-    t4 = time.perf_counter()
-
-    # Objective: maximize v
-    objective = solver.Objective()
-    objective.SetCoefficient(v, 1)
-    objective.SetMaximization()
-    t5 = time.perf_counter()
-
-    # Solve
-    solve_start = t5
     status = solver.Solve()
-    solve_end = time.perf_counter()
-
-    total_time = solve_end - t0
-    create_solver_time = t1 - t0
-    var_time = t2 - t1
-    constraint_time = t3 - t2
-    prob_constraint_time = t4 - t3
-    objective_time = t5 - t4
-    solve_time = solve_end - solve_start
-
-    # Track timing by matrix size
-    matrix_size = numRows * numCols
-    
-    if not hasattr(globals, 'timing_stats'):
-        globals.timing_stats = {}
-    
-    if matrix_size not in globals.timing_stats:
-        globals.timing_stats[matrix_size] = {
-            'count': 0,
-            'total_time': 0,
-            'create_solver_time': 0,
-            'var_time': 0,
-            'constraint_time': 0,
-            'prob_constraint_time': 0,
-            'objective_time': 0,
-            'solve_time': 0
-        }
-    
-    stats = globals.timing_stats[matrix_size]
-    stats['count'] += 1
-    stats['total_time'] += total_time
-    stats['create_solver_time'] += create_solver_time
-    stats['var_time'] += var_time
-    stats['constraint_time'] += constraint_time
-    stats['prob_constraint_time'] += prob_constraint_time
-    stats['objective_time'] += objective_time
-    stats['solve_time'] += solve_time
 
     if status == pywraplp.Solver.OPTIMAL:
         probabilities = np.array([p[i].solution_value() for i in range(numRows)])
