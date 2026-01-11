@@ -5,7 +5,7 @@ from typing import Union
 
 def cmp(a: Union[int, float], b: Union[int, float]) -> int:
     """Compare two numbers and return -1, 0, or 1 (spaceship operator)."""
-    return (a > b) - (a < b)
+    return int(a > b) - int(a < b)
 
 @lru_cache(maxsize=None)
 def compress_cards(cardsA: tuple[int, ...], cardsB: tuple[int, ...]) -> tuple[tuple[int, ...], tuple[int, ...]]:
