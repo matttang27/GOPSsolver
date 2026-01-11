@@ -6,11 +6,11 @@ from solver import calculateEV
 from utils import full
 from linprog import findBestStrategy_scipy_fallback, findBestStrategyKnownRange
 import numpy as np
-
+import matplotlib.pyplot as plt
 
 
 def runFull():
-    for i in range(1, 9):
+    for i in range(1, 8):
         start_time = time.time()
         print(f"Calculating EV for full({i})...")
 
@@ -148,5 +148,34 @@ def test_scipy_vs_adominant_speed(ev_lower=0.95, ev_upper=1.01):
     else:
         print("findBestStrategyKnownRange took 0 seconds (no matrices or error).")
 
+def testPointDiff():
+
+    # Analyze EV as a function of pointDiff for full(6)
+    n = 7
+    point_diffs = np.arange(0, 20)
+    print(point_diffs)
+    evs = [calculateEV(full(n), full(n), pd, full(n), n-1, "v") for pd in point_diffs]
+
+    highest_order = 5
+    coeffs = [np.polyfit(point_diffs, evs, i) for i in range(1, highest_order + 1)]
+
+    plt.plot(point_diffs, evs, marker='o', label="Data")
+    for i, c in enumerate(coeffs):
+        plt.plot(point_diffs, np.polyval(c, point_diffs), label=f"Degree {i+1} fit")
+    plt.xlabel("pointDiff")
+    plt.ylabel("EV")
+    plt.title(f"EV vs pointDiff for full({n})")
+    plt.grid(True)
+    plt.legend()
+    plt.show()
+
+    # R ^ 2
+    for i, c in enumerate(coeffs):
+        evs_fit = np.polyval(c, point_diffs)
+        ss_res = np.sum((evs - evs_fit) ** 2)
+        ss_tot = np.sum((evs - np.mean(evs)) ** 2)
+        r2 = 1 - ss_res / ss_tot
+        print(f"Degree {i+1} fit R^2: {r2:.4f}")
+
 if __name__ == "__main__":
-    runFull()
+    testPointDiff()
