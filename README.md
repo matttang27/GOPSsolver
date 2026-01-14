@@ -18,9 +18,9 @@ There's two methods I can think of right now:
 
 Let's look at Option 1 first.
 
-The idea is to build a tree of all possible states and their payoffs.
+The idea is to build a tree of all possible states and their payoffs. If we want to analyze 13 card GOPS, we first get the expected value of all the possible 12 card states, which requires all the 11 card... this is obviously a very exponential process. At 13 cards, each player has 13 possible selections for 13*13 = 169 different sets of cards played. Then, there are 12 different prize cards that can appear at the next round, so 169*12 = 2028 12 card states! I used various techinques (memoization, symmetry, filtering) to make this process more efficient, and managed to get a consistent factor of 10x per card, but it was still not enough. Anyways, we're getting ahead of ourselves. Let's start with a simple example:
 
-Let's play a 3 card GOPS, where each player has 1-3, and the prizes are 1-3. Assume the first prize is 1. Let's try to calculate the expected value of Player A: 2, Player B: 1
+We play a 3 card GOPS, where each player has 1-3, and the prizes are 1-3. Assume the first prize is 1. Let's try to calculate the expected value of Player A: 2, Player B: 1
 
 Then, Player A has 1, with (1,3), Player B has 0, with (2,3), and the cards are 2,3. We then branch off further, assuming the prize is 2.
 
@@ -205,7 +205,7 @@ We want to build a matrix like this:
 | **2** |     |     |     |
 | **3** |     |     |     |
 
-What should be inside each cell? Originally, I was doing similar to our 2-card example, where we calculate the immediate payoff + future states. Then I realized it is actually just the EV of that action. I suck at explaining. Let's go to Cell (2,1), where Player A plays 2, and Player B plays 1. We then have the exact same scenario as our 2-card example. We've already calculated the optimal strategy for that, but more importantly, we have the optimal EV, which is -0.333. Therefore, we can fill in Cell (2,1) with -0.333.
+What should be inside each cell? Originally, I was doing something similar to our 2-card example, where we calculate the immediate payoff + future states. Then I realized it is actually just the EV of that action. I suck at explaining. Let's go to Cell (2,1), where Player A plays 2, and Player B plays 1. We then have the exact same scenario as our 2-card example. We've already calculated the optimal strategy for that, but more importantly, we have the optimal EV, which is -0.333. Therefore, we can fill in Cell (2,1) with -0.333.
 
 We can already fill in 4 other cells immediately as well. If both players are in the same state and play the same card, the resulting state is also identical, so the EV is 0. Therefore, (1,1), (2,2), (3,3) are all 0. Additionally, Player A playing 1 and B playing 2 is the opposite of our previous example, so the EV is now flipped, or 0.333.
 
@@ -226,3 +226,15 @@ Filling in the rest of the cells using 2-card EVs, we get:
 | **3** | -1     | -0.333     | 0     |
 
 And so playing 1 100% of the time is the best strategy when you see 1. This is pretty obvious, because even in the best case scenario of you playing 2 and them playing 1, your EV is -0.333.
+
+That is the basis of the algorithm. To calculate the EV given x cards of player A, x cards of player B, a current prize card, the x - 1 remaining prize cards, and the point difference
+- If x = 1, we directly return -1, 0, or 1 depending on who would win after A and B play their cards
+- Otherwise, we simulate the function for all possible states (unique card decisions, and the next card shown). For each possible state, we recursively call this function to get the EV. Then, we use linear programming to find the optimal mixed strategy for Player A, and returning the EV after checking B's best counterplay.
+
+## Optimizations
+
+My initial script was very slow - it took 2 full minutes to get the EV of 5 cards, with exponential growth in time. My current solution calculates 5 card EV in 0.1 seconds, and as mentioned earlier, with a 10x factor per extra card. Let's explore the various methods I used.
+
+### Memoization
+
+The simplest and most effective optimization was to save results. Surprisingly, the number of unique states that are seen from a given state is only 10% of all the states seen. I was not expecting this, as I thought it would be rare (for example, playing a 4 then a 5 vs reversed order, but you won both anyways). 
