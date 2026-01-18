@@ -4,7 +4,7 @@ Main entry point for running solver calculations.
 """
 
 import sys
-from actions import runFull, profile, findGuaranteeThreshold
+from tests.actions import runFull, profile, findGuaranteeThreshold
 
 def main():
     """Main entry point with command line options"""

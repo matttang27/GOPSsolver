@@ -83,15 +83,15 @@ for i, m in enumerate(test_matrices):
     print(f"Matrix {i+1} ({m.shape}): value = {v}")
 
 # Now let's see what % of matrices in a real solve are 2x2 or have saddle points
-from solver import calculateEV
-from linprog import findBestStrategy_valueonly_cached
-from utils import full
+from solver.solver import calculateEV
+from solver.linprog import findBestStrategy_valueonly_cached
+from solver.utils import full
 
 calculateEV.cache_clear()
 ev = calculateEV(full(5), full(5), 0, full(5), 4, "v")
 
 # Count matrix sizes in LP cache
-from linprog import findBestStrategy_cached
+from solver.linprog import findBestStrategy_cached
 sizes = {}
 for key in findBestStrategy_cached.cache.keys():
     n = len(key)

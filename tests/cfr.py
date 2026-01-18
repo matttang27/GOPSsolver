@@ -1,4 +1,4 @@
-# Let's write a self-contained Python script to '/mnt/data/gops_cfr.py'.
+# FOR ANYONE READING THIS - THIS WAS A TEST IMPLEMENTATION, CFR IS NOT A VIABLE SOLUTION
 # It implements CFR and CFR+, evaluation helpers, and a CLI to run experiments.
 """
 Goofspiel CFR / CFR+ demo

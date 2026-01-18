@@ -18,6 +18,10 @@ There's two methods I can think of right now:
 
 Let's look at Option 1 first.
 
+I tried researching online but didn't find any solutions until I actually implemented the entire thing, and then I found this paper: https://www.econstor.eu/bitstream/10419/98554/1/749748680.pdf
+
+It's nice to know that they also formulated it as a dynamic programming + LP problem. However, they calculated raw point gain instead of win probability.
+
 The idea is to build a tree of all possible states and their payoffs. If we want to analyze 13 card GOPS, we first get the expected value of all the possible 12 card states, which requires all the 11 card... this is obviously a very exponential process. At 13 cards, each player has 13 possible selections for 13*13 = 169 different sets of cards played. Then, there are 12 different prize cards that can appear at the next round, so 169*12 = 2028 12 card states! I used various techinques (memoization, symmetry, filtering) to make this process more efficient, and managed to get a consistent factor of 10x per card, but it was still not enough. Anyways, we're getting ahead of ourselves. Let's start with a simple example:
 
 We play a 3 card GOPS, where each player has 1-3, and the prizes are 1-3. Assume the first prize is 1. Let's try to calculate the expected value of Player A: 2, Player B: 1

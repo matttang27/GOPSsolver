@@ -1,7 +1,7 @@
 import cProfile
 import pstats
-from solver import calculateEV
-from utils import full
+from solver.solver import calculateEV
+from solver.utils import full
 
 pr = cProfile.Profile()
 pr.enable()

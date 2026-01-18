@@ -1,8 +1,8 @@
 import unittest
 import numpy as np
-from solver import calculateEV
-from utils import cmp, full, compress_cards, guaranteed
-from linprog import findBestStrategy, findBestCounterplay
+from solver.solver import calculateEV
+from solver.utils import cmp, full, compress_cards, guaranteed
+from solver.linprog import findBestStrategy, findBestCounterplay
 
 class TestGOPSFunctions(unittest.TestCase):
     

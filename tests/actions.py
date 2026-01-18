@@ -1,10 +1,10 @@
 import time
 import cProfile
 import pstats
-import globals
-from solver import calculateEV
-from utils import full
-from linprog import findBestStrategy_scipy_fallback, findBestStrategyKnownRange
+import tests.globals as globals
+from solver.solver import calculateEV
+from solver.utils import full
+from solver.linprog import findBestStrategy_scipy_fallback, findBestStrategyKnownRange
 import numpy as np
 import matplotlib.pyplot as plt
 

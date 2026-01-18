@@ -1,7 +1,7 @@
 """Check what's hitting the LP solver"""
-from solver import calculateEV
-from linprog import findBestStrategy_cached, findBestStrategy_valueonly_cached
-from utils import full
+from solver.solver import calculateEV
+from solver.linprog import findBestStrategy_cached, findBestStrategy_valueonly_cached
+from solver.utils import full
 
 calculateEV.cache_clear()
 findBestStrategy_cached.cache_clear()
@@ -21,7 +21,7 @@ print("\nTotal calculateEV cache entries:", calculateEV.cache_info().currsize)
 print("Total findBestStrategy_cached entries:", findBestStrategy_cached.cache_info().currsize)
 
 # What about saddle point hits?
-import globals
+import tests.globals as globals
 print(f"\nGlobals stats:")
 print(f"  Total calculated: {globals.totalCalculated}")
 print(f"  Guaranteed wins: {globals.guarantee}")

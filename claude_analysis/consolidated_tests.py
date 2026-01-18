@@ -32,8 +32,8 @@ from itertools import product
 # Import solver
 import sys
 sys.path.insert(0, '..')
-from solver import calculateEV
-from utils import full
+from solver.solver import calculateEV
+from solver.utils import full
 
 
 def compute_gcd(pointDiff, prizes):

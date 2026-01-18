@@ -1,6 +1,6 @@
 """Analyze state space and caching behavior"""
-from solver import calculateEV
-from utils import full
+from solver.solver import calculateEV
+from solver.utils import full
 import time
 
 for n in range(1, 8):
