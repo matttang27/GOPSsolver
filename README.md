@@ -1,22 +1,9 @@
-I've been playing Game of Pure Strategy (or Goofspiel) with my friends, and I keep losing :)
+[Game of Pure Strategy](https://en.wikipedia.org/wiki/Goofspiel)  (or Goofspiel), is a simple two-player card game where players bid cards to win prize cards. To put it simply, 
+each player has cards from 1 to 13, and every turn a random prize card valued from 1 to 13 is revealed. Both players simultaneously play a card, and the player who played the higher card wins the prize card's value in points. If the players tie, either both split the points (effectively 0 points), or the prize card stays for the next round, increasing the value. The game continues until all prize cards are claimed, and the player with the most points wins. For sake of simplicity, we will be using the former tiebreaking rule.
 
-Need to figure out the optimal strategy to clap everyone
+Once you play this game a few times, the general strategy becomes apparent: you want to win prize cards by being slightly above your opponent's bid, while losing prize cards by as much as possible, while also prioritizing high-value prize cards. This leads to a complex and circular mind game of bluffing and predicting your opponent's moves.
 
-There's two methods I can think of right now:
-
-**1. Solving the nash equilibrium for every state, then working backwards to find the best EV.**
-
-- Will find the mathematically proven best strategy
-- Might be impossible for higher amounts of cards because of how many combinations there
-
-**2. Using self-play reinforcement learning to trial and error the best strategy**
-
-- Simpler to execute I think, program the game + rewards for the AI, and let it go wild
-- Need to decide rewards
-- Possibly inaccurate
-- Lots of time
-
-Let's look at Option 1 first.
+For example, for a big prize, the optimal move would be to play a card that is just above what you expect your opponent to play, unless they play the largest card, in which case you should play your smallest card to minimize loss. However, the opponent is also thinking the same way, leading to a complex web of strategies and counter-strategies.
 
 I tried researching online but didn't find any solutions until I actually implemented the entire thing, and then I found this paper: https://www.econstor.eu/bitstream/10419/98554/1/749748680.pdf
 
