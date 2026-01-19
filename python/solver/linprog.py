@@ -4,7 +4,7 @@ import numpy as np
 from ortools.linear_solver import pywraplp
 from scipy.optimize import linprog
 from typing import Optional
-from solver.cache import lru_cache
+from .cache import lru_cache
 import tests.globals as globals
 import time
 

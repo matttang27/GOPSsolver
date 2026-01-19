@@ -3,13 +3,13 @@
 from __future__ import annotations
 import numpy as np
 from typing import Union
-from solver.cache import lru_cache
+from .cache import lru_cache
 from multiprocessing import Manager, Pool, active_children
 
 
 import tests.globals as globals
-from solver.linprog import findBestStrategy_valueonly_cached, findBestStrategy_cached
-from solver.utils import cmp, compress_cards, guaranteed
+from .linprog import findBestStrategy_valueonly_cached, findBestStrategy_cached
+from .utils import cmp, compress_cards, guaranteed
 
 @lru_cache(maxsize=None)
 def calculateEV(cardsA: tuple[int, ...], cardsB: tuple[int, ...], pointDiff: int, 
@@ -81,4 +81,4 @@ def calculateEV(cardsA: tuple[int, ...], cardsB: tuple[int, ...], pointDiff: int
 
 
 if __name__ == "__main__":
-    print(calculateEV((1, 2, 3), (1,2,3), 0, (1, 2, 3), 0, ""))
+    print(calculateEV((1, 2, 3), (1,2,3), 0, (1, 2, 3), 0, "m"))
