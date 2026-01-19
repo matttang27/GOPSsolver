@@ -22,41 +22,22 @@ I tried researching online but didn't find any solutions until I actually implem
 
 It's nice to know that they also formulated it as a dynamic programming + LP problem. However, they calculated raw point gain instead of win probability.
 
-The idea is to build a tree of all possible states and their payoffs. If we want to analyze 13 card GOPS, we first get the expected value of all the possible 12 card states, which requires all the 11 card... this is obviously a very exponential process. At 13 cards, each player has 13 possible selections for 13*13 = 169 different sets of cards played. Then, there are 12 different prize cards that can appear at the next round, so 169*12 = 2028 12 card states! I used various techinques (memoization, symmetry, filtering) to make this process more efficient, and managed to get a consistent factor of 10x per card, but it was still not enough. Anyways, we're getting ahead of ourselves. Let's start with a simple example:
+To calculate the EV of a given state, we consider all possible actions of both players and the resulting states. We create a matrix of payoffs, where each cell is the expected value of the resulting state. We then use linear programming to find the optimal mixed strategy for Player A, assuming Player B plays the best counter-strategy. The value of this optimal strategy is the EV of the current state.
 
-We play a 3 card GOPS, where each player has 1-3, and the prizes are 1-3. Assume the first prize is 1. Let's try to calculate the expected value of Player A: 2, Player B: 1
+Let's start with an example.
 
-Then, Player A has 1, with (1,3), Player B has 0, with (2,3), and the cards are 2,3. We then branch off further, assuming the prize is 2.
+We play a 2 card GOPS. For asymmetry (as a symmetric state obviously has an EV of 0), let's say Player A has cards (1,3), Player B has cards (2,3), but player A is up by 1 point. Let's say the current prize card is 2, and the last prize card is 3. This is equivalent to a 3 card GOPS where player A played 2 and B played 1, and A won the prize of 1 point.
 
-The immediate payoff matrix would be a 2x2 matrix.
-
-|       | 2   | 3   |
-| ----- | --- | --- |
-| **1** | -2  | -2  |
-| **3** | 2   | 0   |
-
-We then add 1 to each cell, since A is up 1.
+The payoff matrix is now a 2x2 matrix, where the rows are Player A's possible plays (1,3) and the columns are Player B's possible plays (2,3).
 
 |       | 2   | 3   |
 | ----- | --- | --- |
-| **1** | -1  | -1  |
-| **3** | 3   | 1   |
+| **1** | ?   | ?   |
+| **3** | ?   | ?   |
 
-This is the difference in points after the second round, but we need to consider the future states as well. Thankfully for 3-card GOPS, the last round is set.
+we can now manually calculate the payoff for each action. For example, if A plays 1 and B plays 2, then B wins the prize of 2 and has 2 points. They then tie for the last round and B ends up winning by 1 point. When calculating EV, we consider A's perspective, so this cell is -1. It's important to note that -1 is not the point difference, but rather the outcome: even if A loses by 10 points, it's still just -1.
 
-For example, in column (1,3), where player A plays 1 and player B players 3, the remaining cards are 3 and 2, with the prize being 3. Therefore player A will win 3 points.
-
-|       | 2      | 3      |
-| ----- | ------ | ------ |
-| **1** | -1 + 0 | -1 + 2 |
-| **3** | 3 + -3 | 1 + -3 |
-
-|       | 2   | 3   |
-| ----- | --- | --- |
-| **1** | -1  | 1   |
-| **3** | 0   | -2  |
-
-The goal of GOPS is not to maximize your score difference, but to simply win. Therefore, in (3,3), even though Player B will win by 2, it is still only a win, so you consider it -1.
+Filling in the rest of the cells, we get:
 
 |       | 2   | 3   |
 | ----- | --- | --- |
@@ -67,7 +48,7 @@ Looking at the matrix, it looks like Player A should play 1 because it gives an 
 
 Now enter linear programming (which I learned in CO250 omg it's useful). We have two variables, p1 and p2, which are the probabilities of playing card 1 and card 3 respectively. The constraints are that p1 + p2 = 1, and both p1 and p2 must be between 0 and 1.
 
-What is the optimal counter-strategy for Player B, given p1 and p2 for Player A? Note that Player B simply wants to minimize Player A's EV, as this is a zero-sum game.
+What is the optimal counter-strategy for Player B, given p1 and p2 for Player A? Note that for any strategy of Player A, Player B always has a **pure** strategy counter that minimizes Player A's expected value.
 
 If Player B chooses **2**, the expected value (EV) for Player A is:
 
@@ -81,9 +62,7 @@ If Player B chooses **3**, the EV for Player A is:
 EV = 1 × p₁ + (-1) × p₂ = p₁ - p₂
 ```
 
-Player B will always pick the column (strategy) that gives Player A the lowest EV. Thus, Player B's counter-strategy is always a pure strategy: either 2 or 3.
-
-Player B wants to minimize Player A's EV, so:
+Player B will always pick the column (strategy) that gives Player A the lowest EV. Therefore,
 
 - If `-p₁ < p₁ - p₂`, then Player B chooses **2**.
 - Otherwise, Player B chooses **3**.
@@ -195,11 +174,7 @@ else:
 
 The solution is p1 = 0.333, p2 = 0.667, with an expected value of -0.333.
 
-We now have a way to calculate the optimal strategy with 2 cards left, as well as return the expected value of the optimal strategy.
-
-I'm ngl it took me a while to figure out the next step, but I've realized it's simply to simulate every possible outcome given an action, and average the EV. I don't think that makes sense, so I'll give an example, with all 3 cards.
-
-Let's play 3-card GOPS, where Player A has (1,2,3), B has (1,2,3) and the prizes are (1,2,3). Let's say the first prize is 1.
+Let's now play 3-card GOPS, where Player A has (1,2,3), B has (1,2,3) and the prizes are (1,2,3). Let's say the first prize is 1.
 
 We want to build a matrix like this:
 
@@ -209,7 +184,9 @@ We want to build a matrix like this:
 | **2** |     |     |     |
 | **3** |     |     |     |
 
-What should be inside each cell? Originally, I was doing something similar to our 2-card example, where we calculate the immediate payoff + future states. Then I realized it is actually just the EV of that action. I suck at explaining. Let's go to Cell (2,1), where Player A plays 2, and Player B plays 1. We then have the exact same scenario as our 2-card example. We've already calculated the optimal strategy for that, but more importantly, we have the optimal EV, which is -0.333. Therefore, we can fill in Cell (2,1) with -0.333.
+Let's go to Cell (2,1), where Player A plays 2, and Player B plays 1. Player A wins the prize of 1, and now we have Player A with (1,3), Player B with (2,3), and the prizes are (2,3), and the point difference is +1.
+
+Now, there are two possible next prizes: 2 or 3. For prize 2, we have already calculated the EV of this state, which is -0.333. For prize 3, we can do the same process again, leading to -0.333 as well. We average these two EVs together, filling Cell (2,1) with -0.333.
 
 We can already fill in 4 other cells immediately as well. If both players are in the same state and play the same card, the resulting state is also identical, so the EV is 0. Therefore, (1,1), (2,2), (3,3) are all 0. Additionally, Player A playing 1 and B playing 2 is the opposite of our previous example, so the EV is now flipped, or 0.333.
 
@@ -229,15 +206,51 @@ Filling in the rest of the cells using 2-card EVs, we get:
 | **2** | -0.333 | 0     | 0.333     |
 | **3** | -1     | -0.333     | 0     |
 
-And so playing 1 100% of the time is the best strategy when you see 1. This is pretty obvious, because even in the best case scenario of you playing 2 and them playing 1, your EV is -0.333.
+We can see that A playing 1 is a **strictly dominant strategy**, as it gives a better EV than their other options regardless of what B plays. Therefore, both A and B should play 1 all the time.
 
-That is the basis of the algorithm. To calculate the EV given x cards of player A, x cards of player B, a current prize card, the x - 1 remaining prize cards, and the point difference
-- If x = 1, we directly return -1, 0, or 1 depending on who would win after A and B play their cards
-- Otherwise, we simulate the function for all possible states (unique card decisions, and the next card shown). For each possible state, we recursively call this function to get the EV. Then, we use linear programming to find the optimal mixed strategy for Player A, and returning the EV after checking B's best counterplay.
+That is the basis of the algorithm. To formalize:
+
+A,B = cards of Player A / B, ordered tuples. A_i is the card of Player A at index i
+P = remaining prizes, ordered tuple, not including the current prize.
+D = point difference (A - B)
+C = current prize
+|A| = |B| = |P - 1| = x
+
+To calculate EV(A,B,P,D,C), we use a recursive method.
+
+If x = 0:
+- Return 1 if D > 0, 0 if D = 0, -1 if D < 0
+
+Otherwise, create a matrix, where each cell (I,J) represents A playing their ith card, and B playing their jth card. The value of each cell is
+
+\[
+M_{i,j}
+\;=\;
+\operatorname{EV}\!\left(A,B,P,D,C \mid a=A_i,\; b=B_j\right)
+\;=\;
+\frac{1}{|P|}
+\sum_{c \in P}
+\operatorname{EV}\!\left(A\setminus\{a\},\, B\setminus\{b\},\, P\setminus\{c\},\, D+\Delta(a,b,C),\, c\right)
+\]
+
+\[
+\Delta(a,b,C)=
+\begin{cases}
++C & a>b\\
+0  & a=b\\
+-C & a<b
+\end{cases}
+\]
+
+We then use linear programming to find the optimal mixed strategy for Player A, assuming Player B plays the best counter-strategy. The value of this optimal strategy is the EV of the current state.
 
 ## Optimizations
 
-My initial script was very slow - it took 2 full minutes to get the EV of 5 cards, with exponential growth in time. My current solution calculates 5 card EV in 0.1 seconds, and as mentioned earlier, with a 10x factor per extra card. Let's explore the various methods I used.
+Calculating the EV naively is very slow, as the number of states grows factorially with the number of cards. For a N card game, there are N! possible arrangements of cards for each player, and N! possible arrangements of prizes, leading to (N!)^3 states. For 13 card GOPS, this is approximately 2.4e29 states.
+
+Even 5 card GOPS has (5!)^3 = 1,728,000 states, and so my initial script took 2 minutes to calculate the EV of 5 cards.
+
+My current solution calculates 5 card EV in 0.1 seconds, and as mentioned earlier, with a 10x factor per extra card. Let's explore the various methods I used.
 
 ### Memoization
 
