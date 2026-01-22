@@ -1,7 +1,10 @@
 #include <iostream>
 #include <sstream>
+#include <chrono>
 #include <vector>
 #include <glpk.h>
+
+static long long g_solveEVCalls = 0;
 
 struct StrategyResult {
     bool success = false;
@@ -169,6 +172,7 @@ std::vector<std::vector<double>> buildMatrix(const State& s) {
     return mat;
 }
 double solveEV(State s) {
+    ++g_solveEVCalls;
     if (s.A.size() == 1) {
         return cmp(s.diff + (cmp(s.A[0], s.B[0]) * s.curP), 0);
     }
@@ -196,9 +200,25 @@ std::vector<double> solveProbabilities(State s) {
     return {1.0};
 }
 
+State full(int n) {
+    std::vector<int> vec;
+    for (int i = 1; i <= n; i++) {
+        vec.push_back(i);
+    }
+    return State{vec, vec, std::vector<int>(vec.begin(), vec.end() - 1), 0, n};
+}
 int main() {
-    State initial{{1, 2, 3, 4, 5}, {1, 2, 3, 4, 5}, {1, 2, 3, 4}, 0, 5};
-    auto probabilities = solveProbabilities(initial);
-    std::cout << "Action profile (" << probabilities.size() << "): "
-              << vecToString(probabilities) << std::endl;
+    for (int i = 1; i <= 6; i++) {
+        auto initial = full(i);
+        g_solveEVCalls = 0;
+        auto start = std::chrono::steady_clock::now();
+        auto probabilities = solveProbabilities(initial);
+        auto end = std::chrono::steady_clock::now();
+        auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+        std::cout << "Action profile (" << probabilities.size() << "): "
+                << vecToString(probabilities) << std::endl;
+        std::cout << "solveEV calls: " << g_solveEVCalls << std::endl;
+        std::cout << "Elapsed: " << elapsedMs << " ms" << std::endl;
+    };
+    
 }
