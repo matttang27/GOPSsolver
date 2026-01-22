@@ -23,7 +23,7 @@ def calculateEV(cardsA: tuple[int, ...], cardsB: tuple[int, ...], pointDiff: int
                 sumEV += calculateEV(newA, newB, newDiff, newRemaining, remaining[k])
             matrix[i][j] = sumEV / (x - 1)
     
-def solve_matrix(matrix: np.ndarray) -> float[]:
+def solve_matrix(matrix: np.ndarray):
     shape = matrix.shape[0]
     c = [0] * shape + [-1]
     A_ub = np.hstack([-matrix.T, np.ones((shape, 1))])
