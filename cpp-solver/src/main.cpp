@@ -1,10 +1,15 @@
+#include <array>
+#include <chrono>
+#include <cstdint>
 #include <iostream>
 #include <sstream>
-#include <chrono>
 #include <vector>
 #include <glpk.h>
 
 static long long g_solveEVCalls = 0;
+
+using CardMask = std::uint16_t;
+static const int kMaxCards = 16;
 
 struct StrategyResult {
     bool success = false;
@@ -119,19 +124,68 @@ StrategyResult findBestStrategyGlpk(const std::vector<std::vector<double>>& payo
     return result;
 }
 
+int popcount16(CardMask mask) {
+    int count = 0;
+    while (mask) {
+        count += mask & 1u;
+        mask = static_cast<CardMask>(mask >> 1);
+    }
+    return count;
+}
+
+int listCards(CardMask mask, std::array<std::uint8_t, kMaxCards>& out) {
+    int count = 0;
+    for (int card = 1; card <= kMaxCards; ++card) {
+        if (mask & static_cast<CardMask>(1u << (card - 1))) {
+            out[count++] = static_cast<std::uint8_t>(card);
+        }
+    }
+    return count;
+}
+
+std::uint8_t onlyCard(CardMask mask) {
+    for (int card = 1; card <= kMaxCards; ++card) {
+        if (mask & static_cast<CardMask>(1u << (card - 1))) {
+            return static_cast<std::uint8_t>(card);
+        }
+    }
+    return 0;
+}
+
+CardMask removeCard(CardMask mask, std::uint8_t card) {
+    return static_cast<CardMask>(mask & ~static_cast<CardMask>(1u << (card - 1)));
+}
+
+std::string maskToString(CardMask mask) {
+    std::ostringstream out;
+    out << "[";
+    bool first = true;
+    for (int card = 1; card <= kMaxCards; ++card) {
+        if (mask & static_cast<CardMask>(1u << (card - 1))) {
+            if (!first) {
+                out << ", ";
+            }
+            out << card;
+            first = false;
+        }
+    }
+    out << "]";
+    return out.str();
+}
+
 struct State {
-    std::vector<int> A;
-    std::vector<int> B;
-    std::vector<int> P;   // remaining prizes as a set/list
+    CardMask A = 0;
+    CardMask B = 0;
+    CardMask P = 0;   // remaining prizes as a set/list
     int diff = 0;
     int curP = 0;         // current prize value (1..N)
 };
 
 std::string toString(const State& state) {
     std::ostringstream out;
-    out << "State{A=" << vecToString(state.A)
-        << ", B=" << vecToString(state.B)
-        << ", P=" << vecToString(state.P)
+    out << "State{A=" << maskToString(state.A)
+        << ", B=" << maskToString(state.B)
+        << ", P=" << maskToString(state.P)
         << ", diff=" << state.diff
         << ", curP=" << state.curP
         << "}";
@@ -145,36 +199,44 @@ int cmp(T a, T b) {
     return (a > b) - (a < b);
 }
 
-std::vector<int> newPop(const std::vector<int>& vec, int idx) {
-    std::vector<int> res = vec;
-    res.erase(res.begin() + idx);
-    return res;
-}
-
 std::vector<std::vector<double>> buildMatrix(const State& s) {
-    int size = s.A.size();
+    std::array<std::uint8_t, kMaxCards> cardsA;
+    std::array<std::uint8_t, kMaxCards> cardsB;
+    std::array<std::uint8_t, kMaxCards> prizes;
+    const int countA = listCards(s.A, cardsA);
+    const int countB = listCards(s.B, cardsB);
+    const int countP = listCards(s.P, prizes);
+    const int size = countA;
+    if (countA != countB || countP != countA - 1) {
+        return {};
+    }
     std::vector<std::vector<double>> mat(size, std::vector<double>(size, 0.0));
 
     for (int i=0;i<size;i++) {
         for (int j=0;j<size;j++) {
-            auto newA = newPop(s.A, i);
-            auto newB = newPop(s.B, j);
-            int newDiff = s.diff + cmp((s.A[i] - s.B[j]),0) * s.curP;
+            std::uint8_t cardA = cardsA[i];
+            std::uint8_t cardB = cardsB[j];
+            auto newA = removeCard(s.A, cardA);
+            auto newB = removeCard(s.B, cardB);
+            int newDiff = s.diff + cmp(cardA, cardB) * s.curP;
             double sumEV = 0.0;
-            for (int k = 0; k < size - 1; k++) {
-                auto newRemaining = newPop(s.P, k);
-                State newState{newA, newB, newRemaining, newDiff, s.P[k]};
+            for (int k = 0; k < countP; k++) {
+                std::uint8_t nextPrize = prizes[k];
+                auto newRemaining = removeCard(s.P, nextPrize);
+                State newState{newA, newB, newRemaining, newDiff, nextPrize};
                 sumEV += solveEV(newState);
             }
-            mat[i][j] = sumEV / (size - 1);
+            mat[i][j] = sumEV / countP;
         }
     }
     return mat;
 }
 double solveEV(State s) {
     ++g_solveEVCalls;
-    if (s.A.size() == 1) {
-        return cmp(s.diff + (cmp(s.A[0], s.B[0]) * s.curP), 0);
+    if (popcount16(s.A) == 1) {
+        std::uint8_t cardA = onlyCard(s.A);
+        std::uint8_t cardB = onlyCard(s.B);
+        return cmp(s.diff + (cmp(cardA, cardB) * s.curP), 0);
     }
     auto M = buildMatrix(s);
     auto result = findBestStrategyGlpk(M);
@@ -187,7 +249,7 @@ double solveEV(State s) {
 }
 
 std::vector<double> solveProbabilities(State s) {
-    if (s.A.size() == 1) {
+    if (popcount16(s.A) == 1) {
         return {1.0};
     }
     auto M = buildMatrix(s);
@@ -201,11 +263,13 @@ std::vector<double> solveProbabilities(State s) {
 }
 
 State full(int n) {
-    std::vector<int> vec;
-    for (int i = 1; i <= n; i++) {
-        vec.push_back(i);
+    if (n <= 0 || n > kMaxCards) {
+        std::cerr << "n must be between 1 and " << kMaxCards << std::endl;
+        return State{};
     }
-    return State{vec, vec, std::vector<int>(vec.begin(), vec.end() - 1), 0, n};
+    CardMask all = static_cast<CardMask>((1u << n) - 1u);
+    CardMask remainingPrizes = static_cast<CardMask>(all & ~static_cast<CardMask>(1u << (n - 1)));
+    return State{all, all, remainingPrizes, 0, n};
 }
 int main() {
     for (int i = 1; i <= 6; i++) {
@@ -220,5 +284,4 @@ int main() {
         std::cout << "solveEV calls: " << g_solveEVCalls << std::endl;
         std::cout << "Elapsed: " << elapsedMs << " ms" << std::endl;
     };
-    
 }
