@@ -1,5 +1,6 @@
 #pragma once
 
+#include <string>
 #include <vector>
 
 #include "mask.h"
@@ -15,6 +16,12 @@ struct State {
 extern long long g_solveEVCalls;
 extern long long g_guaranteedWins;
 extern long long g_guaranteedDetected;
+extern long long g_buildMatrixCalls;
+extern double g_buildMatrixMaeSum;
+extern bool g_enableGuarantee;
+extern bool g_enableCompression;
+extern bool g_enableCache;
+extern bool g_enableNoise;
 
 struct TimingStats {
     long long cacheNs = 0;
@@ -34,3 +41,4 @@ std::vector<double> solveProbabilities(State s);
 std::vector<std::vector<double>> buildMatrix(const State& s);
 State full(int n);
 void clearEvCache();
+bool saveEvCache(const std::string& path);

@@ -1,10 +1,14 @@
 #include "solver.h"
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstdint>
+#include <fstream>
 #include <iostream>
+#include <random>
 #include <sstream>
+#include <string>
 #include <unordered_map>
 
 #include "linprog_glpk.h"
@@ -12,7 +16,13 @@
 long long g_solveEVCalls = 0;
 long long g_guaranteedWins = 0;
 long long g_guaranteedDetected = 0;
+long long g_buildMatrixCalls = 0;
+double g_buildMatrixMaeSum = 0.0;
 TimingStats g_timing;
+bool g_enableGuarantee = true;
+bool g_enableCompression = true;
+bool g_enableCache = true;
+bool g_enableNoise = false;
 
 struct StateKey {
     CardMask A = 0;
@@ -44,6 +54,16 @@ struct StateKeyHash {
 
 static std::unordered_map<StateKey, double, StateKeyHash> g_evCache;
 
+static std::uint64_t packStateKey(const StateKey& key) {
+    std::uint64_t packed = 0;
+    packed |= static_cast<std::uint64_t>(key.A);
+    packed |= static_cast<std::uint64_t>(key.B) << 16;
+    packed |= static_cast<std::uint64_t>(key.P) << 32;
+    packed |= static_cast<std::uint64_t>(static_cast<std::uint8_t>(key.diff)) << 48;
+    packed |= static_cast<std::uint64_t>(key.curP) << 56;
+    return packed;
+}
+
 static std::string toString(const State& state) {
     std::ostringstream out;
     out << "State{A=" << maskToString(state.A)
@@ -58,6 +78,17 @@ static std::string toString(const State& state) {
 template<typename T>
 int cmp(T a, T b) {
     return (a > b) - (a < b);
+}
+
+static const double kNoise = 1e-3;
+static std::mt19937_64 g_noiseRng(1234567);
+static std::uniform_real_distribution<double> g_noiseDist(-kNoise, kNoise);
+
+static double applyNoise(double value) {
+    if (!g_enableNoise) {
+        return value;
+    }
+    return value + g_noiseDist(g_noiseRng);
 }
 
 static int highestCard(CardMask mask) {
@@ -131,6 +162,8 @@ std::vector<std::vector<double>> buildMatrix(const State& s) {
         return {};
     }
     std::vector<std::vector<double>> mat(size, std::vector<double>(size, 0.0));
+    double matrixMaeSum = 0.0;
+    long long matrixMaeCount = 0;
 
     for (int i = 0; i < size; i++) {
         for (int j = 0; j < size; j++) {
@@ -139,16 +172,41 @@ std::vector<std::vector<double>> buildMatrix(const State& s) {
             auto newA = removeCard(s.A, cardA);
             auto newB = removeCard(s.B, cardB);
             int newDiff = s.diff + cmp(cardA, cardB) * s.curP;
-            auto compressed = compressCards(newA, newB);
+            CardMask nextA = newA;
+            CardMask nextB = newB;
+            if (g_enableCompression) {
+                auto compressed = compressCards(newA, newB);
+                nextA = compressed.first;
+                nextB = compressed.second;
+            }
             double sumEV = 0.0;
+            std::array<double, kMaxCards> prizeEvs;
             for (int k = 0; k < countP; k++) {
                 std::uint8_t nextPrize = prizes[k];
                 auto newRemaining = removeCard(s.P, nextPrize);
-                State newState{compressed.first, compressed.second, newRemaining, newDiff, nextPrize};
-                sumEV += solveEV(newState);
+                State newState{nextA, nextB, newRemaining, newDiff, nextPrize};
+                double ev = solveEV(newState);
+                prizeEvs[k] = ev;
+                sumEV += ev;
             }
-            mat[i][j] = sumEV / countP;
+            double avg = sumEV / countP;
+            double mae = 0.0;
+            for (int k = 0; k < countP; k++) {
+                double diff = prizeEvs[k] - avg;
+                if (diff < 0.0) {
+                    diff = -diff;
+                }
+                mae += diff;
+            }
+            mae /= countP;
+            matrixMaeSum += mae;
+            ++matrixMaeCount;
+            mat[i][j] = avg;
         }
+    }
+    ++g_buildMatrixCalls;
+    if (matrixMaeCount > 0) {
+        g_buildMatrixMaeSum += matrixMaeSum / matrixMaeCount;
     }
     return mat;
 }
@@ -156,38 +214,44 @@ std::vector<std::vector<double>> buildMatrix(const State& s) {
 double solveEV(State s) {
     StateKey key{s.A, s.B, s.P, s.diff, static_cast<std::uint8_t>(s.curP)};
     if (s.diff < 0 && true) {
-        return -solveEV(State{s.B, s.A, s.P, -s.diff, s.curP});
+        return applyNoise(-solveEV(State{s.B, s.A, s.P, -s.diff, s.curP}));
     }
     //Both only reduce states by around 3% each
     if (s.diff == 0) {
         int cmpAB = cmp(s.A, s.B);
         if (cmpAB < 0) {
-            return -solveEV(State{s.B, s.A, s.P, -s.diff, s.curP});
+            return applyNoise(-solveEV(State{s.B, s.A, s.P, -s.diff, s.curP}));
         } else if (cmpAB == 0) {
-            return 0.0;
+            return applyNoise(0.0);
         }
     }
-    
-    auto cacheStart = std::chrono::steady_clock::now();
-    auto cached = g_evCache.find(key);
-    auto cacheEnd = std::chrono::steady_clock::now();
-    g_timing.cacheNs += std::chrono::duration_cast<std::chrono::nanoseconds>(cacheEnd - cacheStart).count();
-    if (cached != g_evCache.end()) {
-        ++g_timing.cacheHits;
-        return cached->second;
+
+    if (g_enableCache) {
+        auto cacheStart = std::chrono::steady_clock::now();
+        auto cached = g_evCache.find(key);
+        auto cacheEnd = std::chrono::steady_clock::now();
+        g_timing.cacheNs += std::chrono::duration_cast<std::chrono::nanoseconds>(cacheEnd - cacheStart).count();
+        if (cached != g_evCache.end()) {
+            ++g_timing.cacheHits;
+            return applyNoise(cached->second);
+        }
+        ++g_timing.cacheMisses;
     }
-    ++g_timing.cacheMisses;
     ++g_solveEVCalls;
-    auto guaranteeStart = std::chrono::steady_clock::now();
-    int guaranteed = guaranteedOutcome(s);
-    auto guaranteeEnd = std::chrono::steady_clock::now();
-    g_timing.guaranteeNs += std::chrono::duration_cast<std::chrono::nanoseconds>(guaranteeEnd - guaranteeStart).count();
-    ++g_timing.guaranteeCalls;
-    if (guaranteed != 0) {
-        ++g_guaranteedDetected;
-        ++g_guaranteedWins;
-        g_evCache.emplace(key, guaranteed);
-        return guaranteed;
+    if (g_enableGuarantee) {
+        auto guaranteeStart = std::chrono::steady_clock::now();
+        int guaranteed = guaranteedOutcome(s);
+        auto guaranteeEnd = std::chrono::steady_clock::now();
+        g_timing.guaranteeNs += std::chrono::duration_cast<std::chrono::nanoseconds>(guaranteeEnd - guaranteeStart).count();
+        ++g_timing.guaranteeCalls;
+        if (guaranteed != 0) {
+            ++g_guaranteedDetected;
+            ++g_guaranteedWins;
+            if (g_enableCache) {
+                g_evCache.emplace(key, guaranteed);
+            }
+            return applyNoise(static_cast<double>(guaranteed));
+        }
     }
     if (popcount16(s.A) == 1) {
         std::uint8_t cardA = onlyCard(s.A);
@@ -196,8 +260,10 @@ double solveEV(State s) {
         if (value == 1.0 || value == -1.0) {
             ++g_guaranteedWins;
         }
-        g_evCache.emplace(key, value);
-        return value;
+        if (g_enableCache) {
+            g_evCache.emplace(key, value);
+        }
+        return applyNoise(value);
     }
     auto M = buildMatrix(s);
     auto lpStart = std::chrono::steady_clock::now();
@@ -209,12 +275,14 @@ double solveEV(State s) {
         if (result.expectedValue >= 1.0 - 1e-10 || result.expectedValue <= -1.0 + 1e-10) {
             ++g_guaranteedWins;
         }
-        g_evCache.emplace(key, result.expectedValue);
-        return result.expectedValue;
+        if (g_enableCache) {
+            g_evCache.emplace(key, result.expectedValue);
+        }
+        return applyNoise(result.expectedValue);
     }
     std::cerr << "GLPK failed for " << toString(s) << " with "
               << toString(result) << std::endl;
-    return 0.0;
+    return applyNoise(0.0);
 }
 
 std::vector<double> solveProbabilities(State s) {
@@ -243,6 +311,40 @@ State full(int n) {
 
 void clearEvCache() {
     g_evCache.clear();
+}
+
+bool saveEvCache(const std::string& path) {
+    std::ofstream out(path, std::ios::binary);
+    if (!out) {
+        std::cerr << "Failed to open cache output file: " << path << std::endl;
+        return false;
+    }
+    const char magic[8] = {'G', 'O', 'P', 'S', 'E', 'V', '1', '\0'};
+    std::uint32_t version = 1;
+    std::uint32_t reserved = 0;
+    std::uint64_t count = static_cast<std::uint64_t>(g_evCache.size());
+    out.write(magic, sizeof(magic));
+    out.write(reinterpret_cast<const char*>(&version), sizeof(version));
+    out.write(reinterpret_cast<const char*>(&reserved), sizeof(reserved));
+    out.write(reinterpret_cast<const char*>(&count), sizeof(count));
+
+    std::vector<std::pair<std::uint64_t, double>> entries;
+    entries.reserve(g_evCache.size());
+    for (const auto& entry : g_evCache) {
+        entries.emplace_back(packStateKey(entry.first), entry.second);
+    }
+    std::sort(entries.begin(), entries.end(),
+        [](const auto& lhs, const auto& rhs) { return lhs.first < rhs.first; });
+
+    for (const auto& entry : entries) {
+        out.write(reinterpret_cast<const char*>(&entry.first), sizeof(entry.first));
+        out.write(reinterpret_cast<const char*>(&entry.second), sizeof(entry.second));
+    }
+    if (!out) {
+        std::cerr << "Failed while writing cache output file: " << path << std::endl;
+        return false;
+    }
+    return true;
 }
 
 void resetTiming() {

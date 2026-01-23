@@ -79,6 +79,31 @@ void runLpBenchmark(int minN, int maxN, int trials) {
     }
 }
 
+void printUsage(const char* exeName) {
+    std::cout << "Usage: " << exeName << " [options]" << std::endl;
+    std::cout << "Options:" << std::endl;
+    std::cout << "  --no-cache       Disable EV cache" << std::endl;
+    std::cout << "  --no-guarantee   Disable guaranteed win shortcut" << std::endl;
+    std::cout << "  --no-compress    Disable state compression" << std::endl;
+    std::cout << "  --noise          Enable EV noise" << std::endl;
+    std::cout << "  --cache-out PATH Save EV cache to PATH (use {n} for per-N files)" << std::endl;
+    std::cout << "  --help           Show this help message" << std::endl;
+    std::cout << "  lp-bench [minN] [maxN] [trials]" << std::endl;
+}
+
+std::string formatCachePath(const std::string& pathTemplate, int n, bool& usedToken) {
+    std::string token = "{n}";
+    auto pos = pathTemplate.find(token);
+    if (pos == std::string::npos) {
+        usedToken = false;
+        return pathTemplate;
+    }
+    usedToken = true;
+    std::string result = pathTemplate;
+    result.replace(pos, token.size(), std::to_string(n));
+    return result;
+}
+
 int main(int argc, char** argv) {
     if (argc >= 2 && std::string(argv[1]) == "lp-bench") {
         int minN = argc >= 3 ? std::stoi(argv[2]) : 2;
@@ -88,14 +113,45 @@ int main(int argc, char** argv) {
         return 0;
     }
 
+    std::string cacheOutTemplate;
+    for (int argi = 1; argi < argc; ++argi) {
+        std::string arg = argv[argi];
+        if (arg == "--no-cache") {
+            g_enableCache = false;
+        } else if (arg == "--no-guarantee") {
+            g_enableGuarantee = false;
+        } else if (arg == "--no-compress") {
+            g_enableCompression = false;
+        } else if (arg == "--noise") {
+            g_enableNoise = true;
+        } else if (arg == "--cache-out") {
+            if (argi + 1 >= argc) {
+                std::cout << "Missing value for --cache-out" << std::endl;
+                return 1;
+            }
+            cacheOutTemplate = argv[++argi];
+        } else if (arg == "--help") {
+            printUsage(argv[0]);
+            return 0;
+        } else {
+            std::cout << "Unknown argument: " << arg << std::endl;
+            printUsage(argv[0]);
+            return 1;
+        }
+    }
+
+    const int minN = 1;
+    const int maxN = 8;
     long long totalMs = 0;
-    for (int i = 1; i <= 10; i++) {
+    for (int i = minN; i <= maxN; i++) {
         clearEvCache();
         resetTiming();
-        auto initial = full(8);
+        auto initial = full(i);
         g_solveEVCalls = 0;
         g_guaranteedWins = 0;
         g_guaranteedDetected = 0;
+        g_buildMatrixCalls = 0;
+        g_buildMatrixMaeSum = 0.0;
         auto start = std::chrono::steady_clock::now();
         auto probabilities = solveProbabilities(initial);
         auto end = std::chrono::steady_clock::now();
@@ -105,6 +161,8 @@ int main(int argc, char** argv) {
         std::cout << "solveEV calls: " << g_solveEVCalls << std::endl;
         std::cout << "guaranteed wins: " << g_guaranteedWins << std::endl;
         std::cout << "guaranteed detected: " << g_guaranteedDetected << std::endl;
+        double avgMae = g_buildMatrixCalls == 0 ? 0.0 : g_buildMatrixMaeSum / g_buildMatrixCalls;
+        std::cout << "prize MAE avg: " << avgMae << std::endl;
         auto cacheLookups = g_timing.cacheHits + g_timing.cacheMisses;
         double cacheMs = g_timing.cacheNs / 1e6;
         double guaranteeMs = g_timing.guaranteeNs / 1e6;
@@ -120,6 +178,20 @@ int main(int argc, char** argv) {
                   << " ms, " << lpAvgNs << " ns avg" << std::endl;
         std::cout << "Elapsed: " << elapsedMs << " ms" << std::endl;
         totalMs += elapsedMs;
+
+        if (!cacheOutTemplate.empty()) {
+            bool usedToken = false;
+            std::string cachePath = formatCachePath(cacheOutTemplate, i, usedToken);
+            if (usedToken || i == maxN) {
+                if (!usedToken) {
+                    cachePath = cacheOutTemplate;
+                }
+                if (!saveEvCache(cachePath)) {
+                    return 1;
+                }
+                std::cout << "cache saved: " << cachePath << std::endl;
+            }
+        }
     };
     std::cout << "Total elapsed: " << totalMs << " ms" << std::endl;
 }
