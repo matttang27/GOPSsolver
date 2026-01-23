@@ -9,6 +9,8 @@
 #include "linprog_glpk.h"
 
 long long g_solveEVCalls = 0;
+long long g_guaranteedWins = 0;
+long long g_guaranteedDetected = 0;
 
 struct StateKey {
     CardMask A = 0;
@@ -56,6 +58,65 @@ int cmp(T a, T b) {
     return (a > b) - (a < b);
 }
 
+static int highestCard(CardMask mask) {
+    for (int card = kMaxCards; card >= 1; --card) {
+        if (mask & static_cast<CardMask>(1u << (card - 1))) {
+            return card;
+        }
+    }
+    return 0;
+}
+
+static int countAbove(CardMask mask, int threshold) {
+    if (threshold <= 0) {
+        return popcount16(mask);
+    }
+    if (threshold >= kMaxCards) {
+        return 0;
+    }
+    CardMask higher = static_cast<CardMask>(mask & ~static_cast<CardMask>((1u << threshold) - 1u));
+    return popcount16(higher);
+}
+
+static int guaranteedOutcome(const State& s) {
+    CardMask prizeMask = s.P;
+    if (s.curP > 0) {
+        prizeMask = static_cast<CardMask>(prizeMask | static_cast<CardMask>(1u << (s.curP - 1)));
+    }
+    std::array<int, kMaxCards> sortedPrizes;
+    int prizeCount = 0;
+    int total = 0;
+    for (int card = kMaxCards; card >= 1; --card) {
+        if (prizeMask & static_cast<CardMask>(1u << (card - 1))) {
+            sortedPrizes[prizeCount++] = card;
+            total += card;
+        }
+    }
+    if (prizeCount == 0) {
+        return 0;
+    }
+    std::array<int, kMaxCards + 1> guarantee;
+    guarantee[0] = -total;
+    int sumTop = 0;
+    for (int i = 1; i <= prizeCount; ++i) {
+        sumTop += sortedPrizes[i - 1];
+        guarantee[i] = 2 * sumTop - total;
+    }
+
+    const int maxA = highestCard(s.A);
+    const int maxB = highestCard(s.B);
+    const int guaranteeA = countAbove(s.A, maxB);
+    const int guaranteeB = countAbove(s.B, maxA);
+
+    if (guarantee[guaranteeA] + s.diff > 0) {
+        return 1;
+    }
+    if (s.diff - guarantee[guaranteeB] < 0) {
+        return -1;
+    }
+    return 0;
+}
+
 std::vector<std::vector<double>> buildMatrix(const State& s) {
     std::array<std::uint8_t, kMaxCards> cardsA;
     std::array<std::uint8_t, kMaxCards> cardsB;
@@ -95,24 +156,44 @@ double solveEV(State s) {
     if (s.diff < 0 && true) {
         return -solveEV(State{s.B, s.A, s.P, -s.diff, s.curP});
     }
-    if (s.diff == 0 && s.A > s.B && true) {
-        return -solveEV(State{s.B, s.A, s.P, -s.diff, s.curP});
+    //Both only reduce states by around 3% each
+    if (s.diff == 0) {
+        int cmpAB = cmp(s.A, s.B);
+        if (cmpAB < 0) {
+            return -solveEV(State{s.B, s.A, s.P, -s.diff, s.curP});
+        } else if (cmpAB == 0) {
+            return 0.0;
+        }
     }
+    
     auto cached = g_evCache.find(key);
     if (cached != g_evCache.end()) {
         return cached->second;
     }
     ++g_solveEVCalls;
+    int guaranteed = guaranteedOutcome(s);
+    if (guaranteed != 0) {
+        ++g_guaranteedDetected;
+        ++g_guaranteedWins;
+        g_evCache.emplace(key, guaranteed);
+        return guaranteed;
+    }
     if (popcount16(s.A) == 1) {
         std::uint8_t cardA = onlyCard(s.A);
         std::uint8_t cardB = onlyCard(s.B);
         double value = cmp(s.diff + (cmp(cardA, cardB) * s.curP), 0);
+        if (value == 1.0 || value == -1.0) {
+            ++g_guaranteedWins;
+        }
         g_evCache.emplace(key, value);
         return value;
     }
     auto M = buildMatrix(s);
     auto result = findBestStrategyGlpk(M);
     if (result.success) {
+        if (result.expectedValue >= 1.0 - 1e-10 || result.expectedValue <= -1.0 + 1e-10) {
+            ++g_guaranteedWins;
+        }
         g_evCache.emplace(key, result.expectedValue);
         return result.expectedValue;
     }

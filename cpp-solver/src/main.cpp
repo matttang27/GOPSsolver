@@ -23,8 +23,10 @@ int main() {
     long long totalMs = 0;
     for (int i = 1; i <= 10; i++) {
         clearEvCache();
-        auto initial = full(6);
+        auto initial = full(8);
         g_solveEVCalls = 0;
+        g_guaranteedWins = 0;
+        g_guaranteedDetected = 0;
         auto start = std::chrono::steady_clock::now();
         auto probabilities = solveProbabilities(initial);
         auto end = std::chrono::steady_clock::now();
@@ -32,6 +34,8 @@ int main() {
         std::cout << "Action profile (" << probabilities.size() << "): "
                 << vecToString(probabilities) << std::endl;
         std::cout << "solveEV calls: " << g_solveEVCalls << std::endl;
+        std::cout << "guaranteed wins: " << g_guaranteedWins << std::endl;
+        std::cout << "guaranteed detected: " << g_guaranteedDetected << std::endl;
         std::cout << "Elapsed: " << elapsedMs << " ms" << std::endl;
         totalMs += elapsedMs;
     };

@@ -13,6 +13,8 @@ struct State {
 };
 
 extern long long g_solveEVCalls;
+extern long long g_guaranteedWins;
+extern long long g_guaranteedDetected;
 
 double solveEV(State s);
 std::vector<double> solveProbabilities(State s);
