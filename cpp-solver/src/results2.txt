@@ -1,0 +1,65 @@
+Action profile (1): [1]
+solveEV calls: 0
+guaranteed wins: 0
+guaranteed detected: 0
+cache: 0 hits, 0 misses, 0 ms, 0 ns avg
+guarantee: 0 calls, 0 ms, 0 ns avg
+lp: 0 calls, 0 ms, 0 ns avg
+Elapsed: 0 ms
+Action profile (2): [0, 1]
+solveEV calls: 1
+guaranteed wins: 1
+guaranteed detected: 1
+cache: 1 hits, 1 misses, 0.0001 ms, 50 ns avg
+guarantee: 1 calls, 0.0002 ms, 200 ns avg
+lp: 0 calls, 0 ms, 0 ns avg
+Elapsed: 0 ms
+Action profile (3): [0, 0, 1]
+solveEV calls: 16
+guaranteed wins: 12
+guaranteed detected: 6
+cache: 20 hits, 16 misses, 0.0018 ms, 50 ns avg
+guarantee: 16 calls, 0.002 ms, 125 ns avg
+lp: 6 calls, 0.1806 ms, 30100 ns avg
+Elapsed: 0 ms
+Action profile (4): [0, 0, 0, 1]
+solveEV calls: 174
+guaranteed wins: 137
+guaranteed detected: 83
+cache: 436 hits, 174 misses, 0.0241 ms, 39.5082 ns avg
+guarantee: 174 calls, 0.0171 ms, 98.2759 ns avg
+lp: 82 calls, 1.4586 ms, 17787.8 ns avg
+Elapsed: 1 ms
+Action profile (5): [0.144423, 0.0153536, 0, 0, 0.840223]
+solveEV calls: 1515
+guaranteed wins: 1233
+guaranteed detected: 753
+cache: 9289 hits, 1515 misses, 0.6172 ms, 57.127 ns avg
+guarantee: 1515 calls, 0.1361 ms, 89.835 ns avg
+lp: 748 calls, 12.5672 ms, 16801.1 ns avg
+Elapsed: 14 ms
+Action profile (6): [0, 0.176829, 0.00787058, 0, 0, 0.815301]
+solveEV calls: 13103
+guaranteed wins: 10024
+guaranteed detected: 6064
+cache: 170741 hits, 13103 misses, 16.1532 ms, 87.8636 ns avg
+guarantee: 13103 calls, 1.1149 ms, 85.0874 ns avg
+lp: 7019 calls, 103.814 ms, 14790.4 ns avg
+Elapsed: 137 ms
+Action profile (7): [0.0120893, 0, 0.185794, 0, 0, 0, 0.802117]
+solveEV calls: 104342
+guaranteed wins: 69333
+guaranteed detected: 36979
+cache: 2932266 hits, 104342 misses, 327.652 ms, 107.901 ns avg
+guarantee: 104342 calls, 8.1941 ms, 78.5312 ns avg
+lp: 67336 calls, 946.589 ms, 14057.7 ns avg
+Elapsed: 1475 ms
+Action profile (8): [0, 0.0875914, 0.00944292, 0.11885, 0.0543571, 0, 0, 0.729759]
+solveEV calls: 815701
+guaranteed wins: 495926
+guaranteed detected: 249890
+cache: 39312181 hits, 815701 misses, 5927.38 ms, 147.712 ns avg
+guarantee: 815701 calls, 66.089 ms, 81.0211 ns avg
+lp: 565776 calls, 9039.55 ms, 15977.3 ns avg
+Elapsed: 17564 ms
+Total elapsed: 19191 ms
