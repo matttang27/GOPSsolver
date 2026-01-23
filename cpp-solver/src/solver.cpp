@@ -76,11 +76,12 @@ std::vector<std::vector<double>> buildMatrix(const State& s) {
             auto newA = removeCard(s.A, cardA);
             auto newB = removeCard(s.B, cardB);
             int newDiff = s.diff + cmp(cardA, cardB) * s.curP;
+            auto compressed = compressCards(newA, newB);
             double sumEV = 0.0;
             for (int k = 0; k < countP; k++) {
                 std::uint8_t nextPrize = prizes[k];
                 auto newRemaining = removeCard(s.P, nextPrize);
-                State newState{newA, newB, newRemaining, newDiff, nextPrize};
+                State newState{compressed.first, compressed.second, newRemaining, newDiff, nextPrize};
                 sumEV += solveEV(newState);
             }
             mat[i][j] = sumEV / countP;
@@ -91,7 +92,10 @@ std::vector<std::vector<double>> buildMatrix(const State& s) {
 
 double solveEV(State s) {
     StateKey key{s.A, s.B, s.P, s.diff, static_cast<std::uint8_t>(s.curP)};
-    if (s.diff < 0 && false) {
+    if (s.diff < 0 && true) {
+        return -solveEV(State{s.B, s.A, s.P, -s.diff, s.curP});
+    }
+    if (s.diff == 0 && s.A > s.B && true) {
         return -solveEV(State{s.B, s.A, s.P, -s.diff, s.curP});
     }
     auto cached = g_evCache.find(key);

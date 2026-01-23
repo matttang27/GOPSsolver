@@ -54,3 +54,25 @@ std::string maskToString(CardMask mask) {
     out << "]";
     return out.str();
 }
+
+std::pair<CardMask, CardMask> compressCards(CardMask a, CardMask b) {
+    CardMask unionMask = static_cast<CardMask>(a | b);
+    CardMask compressedA = 0;
+    CardMask compressedB = 0;
+    int outBit = 0;
+    while (unionMask) {
+        if (unionMask & 1u) {
+            if (a & 1u) {
+                compressedA = static_cast<CardMask>(compressedA | static_cast<CardMask>(1u << outBit));
+            }
+            if (b & 1u) {
+                compressedB = static_cast<CardMask>(compressedB | static_cast<CardMask>(1u << outBit));
+            }
+            ++outBit;
+        }
+        unionMask = static_cast<CardMask>(unionMask >> 1);
+        a = static_cast<CardMask>(a >> 1);
+        b = static_cast<CardMask>(b >> 1);
+    }
+    return {compressedA, compressedB};
+}
