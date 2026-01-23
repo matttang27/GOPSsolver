@@ -1,6 +1,7 @@
 #include "solver.h"
 
 #include <array>
+#include <chrono>
 #include <cstdint>
 #include <iostream>
 #include <sstream>
@@ -11,6 +12,7 @@
 long long g_solveEVCalls = 0;
 long long g_guaranteedWins = 0;
 long long g_guaranteedDetected = 0;
+TimingStats g_timing;
 
 struct StateKey {
     CardMask A = 0;
@@ -166,12 +168,21 @@ double solveEV(State s) {
         }
     }
     
+    auto cacheStart = std::chrono::steady_clock::now();
     auto cached = g_evCache.find(key);
+    auto cacheEnd = std::chrono::steady_clock::now();
+    g_timing.cacheNs += std::chrono::duration_cast<std::chrono::nanoseconds>(cacheEnd - cacheStart).count();
     if (cached != g_evCache.end()) {
+        ++g_timing.cacheHits;
         return cached->second;
     }
+    ++g_timing.cacheMisses;
     ++g_solveEVCalls;
+    auto guaranteeStart = std::chrono::steady_clock::now();
     int guaranteed = guaranteedOutcome(s);
+    auto guaranteeEnd = std::chrono::steady_clock::now();
+    g_timing.guaranteeNs += std::chrono::duration_cast<std::chrono::nanoseconds>(guaranteeEnd - guaranteeStart).count();
+    ++g_timing.guaranteeCalls;
     if (guaranteed != 0) {
         ++g_guaranteedDetected;
         ++g_guaranteedWins;
@@ -189,7 +200,11 @@ double solveEV(State s) {
         return value;
     }
     auto M = buildMatrix(s);
+    auto lpStart = std::chrono::steady_clock::now();
     auto result = findBestStrategyGlpk(M);
+    auto lpEnd = std::chrono::steady_clock::now();
+    g_timing.lpNs += std::chrono::duration_cast<std::chrono::nanoseconds>(lpEnd - lpStart).count();
+    ++g_timing.lpCalls;
     if (result.success) {
         if (result.expectedValue >= 1.0 - 1e-10 || result.expectedValue <= -1.0 + 1e-10) {
             ++g_guaranteedWins;
@@ -228,4 +243,8 @@ State full(int n) {
 
 void clearEvCache() {
     g_evCache.clear();
+}
+
+void resetTiming() {
+    g_timing = TimingStats{};
 }
