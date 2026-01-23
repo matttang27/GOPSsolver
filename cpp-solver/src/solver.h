@@ -18,3 +18,4 @@ double solveEV(State s);
 std::vector<double> solveProbabilities(State s);
 std::vector<std::vector<double>> buildMatrix(const State& s);
 State full(int n);
+void clearEvCache();
