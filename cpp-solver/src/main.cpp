@@ -160,7 +160,7 @@ int main(int argc, char** argv) {
     }
 
     const int minN = 1;
-    const int maxN = 8;
+    const int maxN = 6;
     long long totalMs = 0;
     for (int i = minN; i <= maxN; i++) {
         clearEvCache();

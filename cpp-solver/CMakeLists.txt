@@ -12,7 +12,7 @@ if(NOT GLPK_INCLUDE_DIR OR NOT GLPK_LIBRARY)
 endif()
 
 # Add your executable
-file(GLOB SOURCES "src/*.cpp")
+file(GLOB SOURCES CONFIGURE_DEPENDS "src/*.cpp")
 add_executable(cpp_solver ${SOURCES})
 
 target_include_directories(cpp_solver PRIVATE "${GLPK_INCLUDE_DIR}")
