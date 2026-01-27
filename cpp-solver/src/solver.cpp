@@ -3,15 +3,18 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
+#include <ctime>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
-#include <random>
 #include <sstream>
 #include <string>
 #include <unordered_map>
 
 #include "linprog_glpk.h"
+#include <glpk.h>
 
 long long g_solveEVCalls = 0;
 long long g_guaranteedWins = 0;
@@ -22,7 +25,6 @@ TimingStats g_timing;
 bool g_enableGuarantee = true;
 bool g_enableCompression = true;
 bool g_enableCache = true;
-bool g_enableNoise = false;
 
 struct StateKey {
     CardMask A = 0;
@@ -53,6 +55,7 @@ struct StateKeyHash {
 };
 
 static std::unordered_map<StateKey, double, StateKeyHash> g_evCache;
+static const std::uint32_t kEvcFormatVersion = 1;
 
 static std::uint64_t packStateKey(const StateKey& key) {
     std::uint64_t packed = 0;
@@ -80,15 +83,96 @@ int cmp(T a, T b) {
     return (a > b) - (a < b);
 }
 
-static const double kNoise = 1e-3;
-static std::mt19937_64 g_noiseRng(1234567);
-static std::uniform_real_distribution<double> g_noiseDist(-kNoise, kNoise);
-
-static double applyNoise(double value) {
-    if (!g_enableNoise) {
-        return value;
+static std::string jsonEscape(const std::string& value) {
+    std::ostringstream out;
+    for (unsigned char c : value) {
+        switch (c) {
+            case '\"':
+                out << "\\\"";
+                break;
+            case '\\':
+                out << "\\\\";
+                break;
+            case '\b':
+                out << "\\b";
+                break;
+            case '\f':
+                out << "\\f";
+                break;
+            case '\n':
+                out << "\\n";
+                break;
+            case '\r':
+                out << "\\r";
+                break;
+            case '\t':
+                out << "\\t";
+                break;
+            default:
+                if (c < 0x20) {
+                    out << "\\u00" << std::hex << std::uppercase
+                        << std::setw(2) << std::setfill('0')
+                        << static_cast<int>(c)
+                        << std::dec << std::nouppercase;
+                } else {
+                    out << c;
+                }
+                break;
+        }
     }
-    return value + g_noiseDist(g_noiseRng);
+    return out.str();
+}
+
+static std::string currentUtcIso8601() {
+    auto now = std::chrono::system_clock::now();
+    std::time_t t = std::chrono::system_clock::to_time_t(now);
+    std::tm utc{};
+#if defined(_WIN32)
+    gmtime_s(&utc, &t);
+#else
+    gmtime_r(&t, &utc);
+#endif
+    std::ostringstream out;
+    out << std::put_time(&utc, "%Y-%m-%dT%H:%M:%SZ");
+    return out.str();
+}
+
+static std::string compilerString() {
+#if defined(_MSC_VER)
+    return "MSVC " + std::to_string(_MSC_VER);
+#elif defined(__clang__)
+    return std::string("Clang ") + __clang_version__;
+#elif defined(__GNUC__)
+    return "GCC " + std::to_string(__GNUC__) + "." + std::to_string(__GNUC_MINOR__);
+#else
+    return "";
+#endif
+}
+
+static std::string buildTypeString() {
+#if defined(NDEBUG)
+    return "Release";
+#else
+    return "Debug";
+#endif
+}
+
+static std::string osString() {
+#if defined(_WIN32)
+    return "Windows";
+#elif defined(__APPLE__)
+    return "macOS";
+#elif defined(__linux__)
+    return "Linux";
+#else
+    return "";
+#endif
+}
+
+static std::string endiannessString() {
+    const std::uint16_t test = 1;
+    const unsigned char* bytes = reinterpret_cast<const unsigned char*>(&test);
+    return bytes[0] == 1 ? "little" : "big";
 }
 
 static int highestCard(CardMask mask) {
@@ -214,15 +298,15 @@ std::vector<std::vector<double>> buildMatrix(const State& s) {
 double solveEV(State s) {
     StateKey key{s.A, s.B, s.P, s.diff, static_cast<std::uint8_t>(s.curP)};
     if (s.diff < 0 && true) {
-        return applyNoise(-solveEV(State{s.B, s.A, s.P, -s.diff, s.curP}));
+        return -solveEV(State{s.B, s.A, s.P, -s.diff, s.curP});
     }
     //Both only reduce states by around 3% each
     if (s.diff == 0) {
         int cmpAB = cmp(s.A, s.B);
         if (cmpAB < 0) {
-            return applyNoise(-solveEV(State{s.B, s.A, s.P, -s.diff, s.curP}));
+            return -solveEV(State{s.B, s.A, s.P, -s.diff, s.curP});
         } else if (cmpAB == 0) {
-            return applyNoise(0.0);
+            return 0.0;
         }
     }
 
@@ -233,7 +317,7 @@ double solveEV(State s) {
         g_timing.cacheNs += std::chrono::duration_cast<std::chrono::nanoseconds>(cacheEnd - cacheStart).count();
         if (cached != g_evCache.end()) {
             ++g_timing.cacheHits;
-            return applyNoise(cached->second);
+            return cached->second;
         }
         ++g_timing.cacheMisses;
     }
@@ -250,7 +334,7 @@ double solveEV(State s) {
             if (g_enableCache) {
                 g_evCache.emplace(key, guaranteed);
             }
-            return applyNoise(static_cast<double>(guaranteed));
+            return static_cast<double>(guaranteed);
         }
     }
     if (popcount16(s.A) == 1) {
@@ -263,7 +347,7 @@ double solveEV(State s) {
         if (g_enableCache) {
             g_evCache.emplace(key, value);
         }
-        return applyNoise(value);
+        return value;
     }
     auto M = buildMatrix(s);
     auto lpStart = std::chrono::steady_clock::now();
@@ -278,11 +362,11 @@ double solveEV(State s) {
         if (g_enableCache) {
             g_evCache.emplace(key, result.expectedValue);
         }
-        return applyNoise(result.expectedValue);
+        return result.expectedValue;
     }
     std::cerr << "GLPK failed for " << toString(s) << " with "
               << toString(result) << std::endl;
-    return applyNoise(0.0);
+    return 0.0;
 }
 
 std::vector<double> solveProbabilities(State s) {
@@ -320,7 +404,7 @@ bool saveEvCache(const std::string& path) {
         return false;
     }
     const char magic[8] = {'G', 'O', 'P', 'S', 'E', 'V', '1', '\0'};
-    std::uint32_t version = 1;
+    std::uint32_t version = kEvcFormatVersion;
     std::uint32_t reserved = 0;
     std::uint64_t count = static_cast<std::uint64_t>(g_evCache.size());
     out.write(magic, sizeof(magic));
@@ -342,6 +426,100 @@ bool saveEvCache(const std::string& path) {
     }
     if (!out) {
         std::cerr << "Failed while writing cache output file: " << path << std::endl;
+        return false;
+    }
+    return true;
+}
+
+bool saveEvCacheMetadata(const std::string& evcPath,
+                         const std::string& args,
+                         int minN,
+                         int maxN,
+                         long long durationMs) {
+    std::string path = evcPath + ".json";
+    std::ofstream out(path);
+    if (!out) {
+        std::cerr << "Failed to open cache metadata file: " << path << std::endl;
+        return false;
+    }
+
+    double minEv = 0.0;
+    double maxEv = 0.0;
+    double meanEv = 0.0;
+    double m2 = 0.0;
+    std::size_t count = 0;
+    for (const auto& entry : g_evCache) {
+        double v = entry.second;
+        if (count == 0) {
+            minEv = v;
+            maxEv = v;
+        } else {
+            minEv = std::min(minEv, v);
+            maxEv = std::max(maxEv, v);
+        }
+        ++count;
+        double delta = v - meanEv;
+        meanEv += delta / static_cast<double>(count);
+        m2 += delta * (v - meanEv);
+    }
+    double stdevEv = 0.0;
+    if (count > 1) {
+        stdevEv = std::sqrt(m2 / static_cast<double>(count - 1));
+    }
+    double matrixMaeAvg = g_buildMatrixCalls == 0 ? 0.0 : g_buildMatrixMaeSum / g_buildMatrixCalls;
+
+    out << "{\n";
+    out << "  \"schema_version\": 1,\n";
+    out << "  \"evc_file\": \"" << jsonEscape(evcPath) << "\",\n";
+    out << "  \"evc_format_version\": " << kEvcFormatVersion << ",\n";
+    out << "  \"created_at_utc\": \"" << jsonEscape(currentUtcIso8601()) << "\",\n";
+    out << "  \"notes\": \"\",\n";
+    out << "\n";
+    out << "  \"build\": {\n";
+    out << "    \"git_commit\": \"\",\n";
+    out << "    \"build_type\": \"" << jsonEscape(buildTypeString()) << "\",\n";
+    out << "    \"compiler\": \"" << jsonEscape(compilerString()) << "\",\n";
+    out << "    \"glpk_version\": \"" << jsonEscape(glp_version()) << "\"\n";
+    out << "  },\n";
+    out << "\n";
+    out << "  \"config\": {\n";
+    out << "    \"kMaxCards\": " << kMaxCards << ",\n";
+    out << "    \"key_packing\": \"A16|B16|P16|diff8|curP8\",\n";
+    out << "    \"endianness\": \"" << jsonEscape(endiannessString()) << "\",\n";
+    out << "    \"float_format\": \"IEEE754 double\",\n";
+    out << "    \"toggles\": {\n";
+    out << "      \"cache\": " << (g_enableCache ? "true" : "false") << ",\n";
+    out << "      \"guarantee\": " << (g_enableGuarantee ? "true" : "false") << ",\n";
+    out << "      \"compression\": " << (g_enableCompression ? "true" : "false") << "\n";
+    out << "    }\n";
+    out << "  },\n";
+    out << "\n";
+    out << "  \"run\": {\n";
+    out << "    \"minN\": " << minN << ",\n";
+    out << "    \"maxN\": " << maxN << ",\n";
+    out << "    \"duration_ms\": " << durationMs << ",\n";
+    out << "    \"args\": \"" << jsonEscape(args) << "\",\n";
+    out << "    \"host\": { \"os\": \"" << jsonEscape(osString())
+        << "\", \"cpu\": \"\", \"ram_gb\": null }\n";
+    out << "  },\n";
+    out << "\n";
+    out << "  \"stats\": {\n";
+    out << "    \"record_count\": " << static_cast<std::uint64_t>(g_evCache.size()) << ",\n";
+    out << "    \"ev_min\": " << minEv << ",\n";
+    out << "    \"ev_max\": " << maxEv << ",\n";
+    out << "    \"ev_mean\": " << meanEv << ",\n";
+    out << "    \"ev_stdev\": " << stdevEv << ",\n";
+    out << "    \"guaranteed_wins\": " << g_guaranteedWins << ",\n";
+    out << "    \"guaranteed_detected\": " << g_guaranteedDetected << ",\n";
+    out << "    \"solveEV_calls\": " << g_solveEVCalls << ",\n";
+    out << "    \"matrix_mae_avg\": " << matrixMaeAvg << ",\n";
+    out << "    \"cache_hits\": " << g_timing.cacheHits << ",\n";
+    out << "    \"cache_misses\": " << g_timing.cacheMisses << "\n";
+    out << "  }\n";
+    out << "}\n";
+
+    if (!out) {
+        std::cerr << "Failed while writing cache metadata file: " << path << std::endl;
         return false;
     }
     return true;

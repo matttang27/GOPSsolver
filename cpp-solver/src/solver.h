@@ -21,7 +21,6 @@ extern double g_buildMatrixMaeSum;
 extern bool g_enableGuarantee;
 extern bool g_enableCompression;
 extern bool g_enableCache;
-extern bool g_enableNoise;
 
 struct TimingStats {
     long long cacheNs = 0;
@@ -42,3 +41,8 @@ std::vector<std::vector<double>> buildMatrix(const State& s);
 State full(int n);
 void clearEvCache();
 bool saveEvCache(const std::string& path);
+bool saveEvCacheMetadata(const std::string& evcPath,
+                         const std::string& args,
+                         int minN,
+                         int maxN,
+                         long long durationMs);

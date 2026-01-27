@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "evc_file": "baseline.evc",
+  "evc_format_version": 1,
+  "created_at_utc": "2026-01-27T08:05:06Z",
+  "notes": "",
+
+  "build": {
+    "git_commit": "",
+    "build_type": "Release",
+    "compiler": "MSVC 1944",
+    "glpk_version": "5.0"
+  },
+
+  "config": {
+    "kMaxCards": 16,
+    "key_packing": "A16|B16|P16|diff8|curP8",
+    "endianness": "little",
+    "float_format": "IEEE754 double",
+    "toggles": {
+      "cache": true,
+      "guarantee": true,
+      "compression": true
+    }
+  },
+
+  "run": {
+    "minN": 8,
+    "maxN": 8,
+    "duration_ms": 12985,
+    "args": "C:\\Users\\mattt\\Documents\\MatthewPrograms\\GOPSsolver\\cpp-solver\\build\\vcpkg\\Release\\cpp_solver.exe --cache-out baseline.evc",
+    "host": { "os": "Windows", "cpu": "", "ram_gb": null }
+  },
+
+  "stats": {
+    "record_count": 815701,
+    "ev_min": -1,
+    "ev_max": 1,
+    "ev_mean": 0.580122,
+    "ev_stdev": 0.627672,
+    "guaranteed_wins": 495926,
+    "guaranteed_detected": 249890,
+    "solveEV_calls": 815701,
+    "matrix_mae_avg": 0.0105727,
+    "cache_hits": 39312181,
+    "cache_misses": 815701
+  }
+}

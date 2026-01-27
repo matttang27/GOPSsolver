@@ -85,7 +85,6 @@ void printUsage(const char* exeName) {
     std::cout << "  --no-cache       Disable EV cache" << std::endl;
     std::cout << "  --no-guarantee   Disable guaranteed win shortcut" << std::endl;
     std::cout << "  --no-compress    Disable state compression" << std::endl;
-    std::cout << "  --noise          Enable EV noise" << std::endl;
     std::cout << "  --cache-out PATH Save EV cache to PATH (use {n} for per-N files)" << std::endl;
     std::cout << "  --help           Show this help message" << std::endl;
     std::cout << "  lp-bench [minN] [maxN] [trials]" << std::endl;
@@ -104,6 +103,17 @@ std::string formatCachePath(const std::string& pathTemplate, int n, bool& usedTo
     return result;
 }
 
+std::string joinArgs(int argc, char** argv) {
+    std::ostringstream out;
+    for (int i = 0; i < argc; ++i) {
+        if (i > 0) {
+            out << ' ';
+        }
+        out << argv[i];
+    }
+    return out.str();
+}
+
 int main(int argc, char** argv) {
     if (argc >= 2 && std::string(argv[1]) == "lp-bench") {
         int minN = argc >= 3 ? std::stoi(argv[2]) : 2;
@@ -114,6 +124,7 @@ int main(int argc, char** argv) {
     }
 
     std::string cacheOutTemplate;
+    std::string argsJoined = joinArgs(argc, argv);
     for (int argi = 1; argi < argc; ++argi) {
         std::string arg = argv[argi];
         if (arg == "--no-cache") {
@@ -122,8 +133,6 @@ int main(int argc, char** argv) {
             g_enableGuarantee = false;
         } else if (arg == "--no-compress") {
             g_enableCompression = false;
-        } else if (arg == "--noise") {
-            g_enableNoise = true;
         } else if (arg == "--cache-out") {
             if (argi + 1 >= argc) {
                 std::cout << "Missing value for --cache-out" << std::endl;
@@ -187,6 +196,9 @@ int main(int argc, char** argv) {
                     cachePath = cacheOutTemplate;
                 }
                 if (!saveEvCache(cachePath)) {
+                    return 1;
+                }
+                if (!saveEvCacheMetadata(cachePath, argsJoined, i, i, elapsedMs)) {
                     return 1;
                 }
                 std::cout << "cache saved: " << cachePath << std::endl;
