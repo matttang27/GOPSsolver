@@ -38,7 +38,6 @@ void resetTiming();
 double solveEV(State s);
 std::vector<double> solveProbabilities(State s);
 std::vector<std::vector<double>> buildMatrix(const State& s);
-State full(int n);
 void clearEvCache();
 bool saveEvCache(const std::string& path);
 bool saveEvCacheMetadata(const std::string& evcPath,

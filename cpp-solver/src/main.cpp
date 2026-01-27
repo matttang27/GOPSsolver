@@ -114,6 +114,16 @@ std::string joinArgs(int argc, char** argv) {
     return out.str();
 }
 
+State fullState(int n) {
+    if (n <= 0 || n > kMaxCards) {
+        std::cout << "n must be between 1 and " << kMaxCards << std::endl;
+        return State{};
+    }
+    CardMask all = static_cast<CardMask>((1u << n) - 1u);
+    CardMask remainingPrizes = static_cast<CardMask>(all & ~static_cast<CardMask>(1u << (n - 1)));
+    return State{all, all, remainingPrizes, 0, n};
+}
+
 int main(int argc, char** argv) {
     if (argc >= 2 && std::string(argv[1]) == "lp-bench") {
         int minN = argc >= 3 ? std::stoi(argv[2]) : 2;
@@ -155,7 +165,7 @@ int main(int argc, char** argv) {
     for (int i = minN; i <= maxN; i++) {
         clearEvCache();
         resetTiming();
-        auto initial = full(i);
+        auto initial = fullState(i);
         g_solveEVCalls = 0;
         g_guaranteedWins = 0;
         g_guaranteedDetected = 0;
