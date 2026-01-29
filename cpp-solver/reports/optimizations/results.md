@@ -1,0 +1,1 @@
+Compression and guarantee are both valid optimization methods. I never want to touch this part again.
