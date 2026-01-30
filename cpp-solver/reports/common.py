@@ -67,7 +67,6 @@ def build_matrix(cache: Dict[int, float],
                     ev = get_ev(cache, newA, newB, newP, newDiff, prize)
                 except KeyError:
                     print(f"Missing state in cache: A={list_cards(newA)} B={list_cards(newB)} P={list_cards(newP)} diff={newDiff} curP={prize}")
-                    print(newA - newB)
                     return []
                 sum_ev += ev
             mat[i][j] = sum_ev / countP
