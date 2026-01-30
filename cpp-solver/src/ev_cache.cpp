@@ -206,8 +206,7 @@ bool saveEvCache(const std::string& path) {
 
 bool saveEvCacheMetadata(const std::string& evcPath,
                          const std::string& args,
-                         int minN,
-                         int maxN,
+                         int n,
                          long long durationMs) {
     std::string path = evcPath + ".json";
     std::ofstream out(path);
@@ -268,8 +267,7 @@ bool saveEvCacheMetadata(const std::string& evcPath,
     out << "  },\n";
     out << "\n";
     out << "  \"run\": {\n";
-    out << "    \"minN\": " << minN << ",\n";
-    out << "    \"maxN\": " << maxN << ",\n";
+    out << "    \"N\": " << n << ",\n";
     out << "    \"duration_ms\": " << durationMs << ",\n";
     out << "    \"args\": \"" << jsonEscape(args) << "\",\n";
     out << "    \"host\": { \"os\": \"" << jsonEscape(osString())
@@ -282,8 +280,6 @@ bool saveEvCacheMetadata(const std::string& evcPath,
     out << "    \"ev_max\": " << maxEv << ",\n";
     out << "    \"ev_mean\": " << meanEv << ",\n";
     out << "    \"ev_stdev\": " << stdevEv << ",\n";
-    out << "    \"guaranteed_wins\": " << g_guaranteedWins << ",\n";
-    out << "    \"guaranteed_detected\": " << g_guaranteedDetected << ",\n";
     out << "    \"solveEV_calls\": " << g_solveEVCalls << ",\n";
     out << "    \"matrix_mae_avg\": " << matrixMaeAvg << ",\n";
     out << "    \"cache_hits\": " << g_timing.cacheHits << ",\n";

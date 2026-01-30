@@ -1,8 +1,6 @@
 #include "solver.h"
 
 long long g_solveEVCalls = 0;
-long long g_guaranteedWins = 0;
-long long g_guaranteedDetected = 0;
 long long g_buildMatrixCalls = 0;
 double g_buildMatrixMaeSum = 0.0;
 TimingStats g_timing;

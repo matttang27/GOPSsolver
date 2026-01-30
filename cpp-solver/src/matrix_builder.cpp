@@ -4,6 +4,10 @@
 #include <array>
 #include <vector>
 
+// Builds the payoff matrix for the given state. Each entry (i, j) corresponds to
+// the expected value when Player A plays their i-th card and Player B plays
+// their j-th card. This expected value is computed by considering all possible
+// remaining prizes and recursively solving the resulting states.
 std::vector<std::vector<double>> buildMatrix(const State& s) {
     std::array<std::uint8_t, kMaxCards> cardsA;
     std::array<std::uint8_t, kMaxCards> cardsB;
@@ -26,19 +30,13 @@ std::vector<std::vector<double>> buildMatrix(const State& s) {
             auto newA = removeCard(s.A, cardA);
             auto newB = removeCard(s.B, cardB);
             int newDiff = s.diff + cmp(cardA, cardB) * s.curP;
-            CardMask nextA = newA;
-            CardMask nextB = newB;
-            if (g_enableCompression) {
-                auto compressed = compressCards(newA, newB);
-                nextA = compressed.first;
-                nextB = compressed.second;
-            }
+
             double sumEV = 0.0;
             std::array<double, kMaxCards> prizeEvs;
             for (int k = 0; k < countP; k++) {
                 std::uint8_t nextPrize = prizes[k];
                 auto newRemaining = removeCard(s.P, nextPrize);
-                State newState{nextA, nextB, newRemaining, newDiff, nextPrize};
+                State newState{newA, newB, newRemaining, newDiff, nextPrize};
                 double ev = solveEV(newState);
                 prizeEvs[k] = ev;
                 sumEV += ev;

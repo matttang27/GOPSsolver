@@ -83,8 +83,9 @@ void printUsage(const char* exeName) {
     std::cout << "Usage: " << exeName << " [options]" << std::endl;
     std::cout << "Options:" << std::endl;
     std::cout << "  --no-cache       Disable EV cache" << std::endl;
-    std::cout << "  --no-guarantee   Disable guaranteed win shortcut" << std::endl;
     std::cout << "  --no-compress    Disable state compression" << std::endl;
+    std::cout << "  --no-guarantee   Disable guaranteed shortcut" << std::endl;
+    std::cout << "  --n N            Set N (default: 8)" << std::endl;
     std::cout << "  --cache-out PATH Save EV cache to PATH (use {n} for per-N files)" << std::endl;
     std::cout << "  --help           Show this help message" << std::endl;
     std::cout << "  lp-bench [minN] [maxN] [trials]" << std::endl;
@@ -114,14 +115,19 @@ std::string joinArgs(int argc, char** argv) {
     return out.str();
 }
 
-State fullState(int n) {
+//Creates the starting state for n cards, with selected prize p.
+State fullState(int n, int p) {
     if (n <= 0 || n > kMaxCards) {
         std::cout << "n must be between 1 and " << kMaxCards << std::endl;
         return State{};
     }
+    if (p < 1 || p > n) {
+        std::cout << "p must be between 1 and n" << std::endl;
+        return State{};
+    }
     CardMask all = static_cast<CardMask>((1u << n) - 1u);
-    CardMask remainingPrizes = static_cast<CardMask>(all & ~static_cast<CardMask>(1u << (n - 1)));
-    return State{all, all, remainingPrizes, 0, n};
+    CardMask remainingPrizes = static_cast<CardMask>(all & ~static_cast<CardMask>(1u << (p - 1)));
+    return State{all, all, remainingPrizes, 0, p};
 }
 
 int main(int argc, char** argv) {
@@ -134,15 +140,22 @@ int main(int argc, char** argv) {
     }
 
     std::string cacheOutTemplate;
+    int n = 8;
     std::string argsJoined = joinArgs(argc, argv);
     for (int argi = 1; argi < argc; ++argi) {
         std::string arg = argv[argi];
         if (arg == "--no-cache") {
             g_enableCache = false;
-        } else if (arg == "--no-guarantee") {
-            g_enableGuarantee = false;
         } else if (arg == "--no-compress") {
             g_enableCompression = false;
+        } else if (arg == "--no-guarantee") {
+            g_enableGuarantee = false;
+        } else if (arg == "--n") {
+            if (argi + 1 >= argc) {
+                std::cout << "Missing value for --n" << std::endl;
+                return 1;
+            }
+            n = std::stoi(argv[++argi]);
         } else if (arg == "--cache-out") {
             if (argi + 1 >= argc) {
                 std::cout << "Missing value for --cache-out" << std::endl;
@@ -159,16 +172,11 @@ int main(int argc, char** argv) {
         }
     }
 
-    const int minN = 1;
-    const int maxN = 6;
     long long totalMs = 0;
-    for (int i = minN; i <= maxN; i++) {
-        clearEvCache();
-        resetTiming();
-        auto initial = fullState(i);
+    for (int i = 1; i <= n; i++) {
+        auto initial = fullState(n,i);
+        
         g_solveEVCalls = 0;
-        g_guaranteedWins = 0;
-        g_guaranteedDetected = 0;
         g_buildMatrixCalls = 0;
         g_buildMatrixMaeSum = 0.0;
         auto start = std::chrono::steady_clock::now();
@@ -178,21 +186,15 @@ int main(int argc, char** argv) {
         std::cout << "Action profile (" << probabilities.size() << "): "
                 << vecToString(probabilities) << std::endl;
         std::cout << "solveEV calls: " << g_solveEVCalls << std::endl;
-        std::cout << "guaranteed wins: " << g_guaranteedWins << std::endl;
-        std::cout << "guaranteed detected: " << g_guaranteedDetected << std::endl;
         double avgMae = g_buildMatrixCalls == 0 ? 0.0 : g_buildMatrixMaeSum / g_buildMatrixCalls;
         std::cout << "prize MAE avg: " << avgMae << std::endl;
         auto cacheLookups = g_timing.cacheHits + g_timing.cacheMisses;
         double cacheMs = g_timing.cacheNs / 1e6;
-        double guaranteeMs = g_timing.guaranteeNs / 1e6;
         double lpMs = g_timing.lpNs / 1e6;
         double cacheAvgNs = cacheLookups == 0 ? 0.0 : static_cast<double>(g_timing.cacheNs) / cacheLookups;
-        double guaranteeAvgNs = g_timing.guaranteeCalls == 0 ? 0.0 : static_cast<double>(g_timing.guaranteeNs) / g_timing.guaranteeCalls;
         double lpAvgNs = g_timing.lpCalls == 0 ? 0.0 : static_cast<double>(g_timing.lpNs) / g_timing.lpCalls;
         std::cout << "cache: " << g_timing.cacheHits << " hits, " << g_timing.cacheMisses
                   << " misses, " << cacheMs << " ms, " << cacheAvgNs << " ns avg" << std::endl;
-        std::cout << "guarantee: " << g_timing.guaranteeCalls << " calls, " << guaranteeMs
-                  << " ms, " << guaranteeAvgNs << " ns avg" << std::endl;
         std::cout << "lp: " << g_timing.lpCalls << " calls, " << lpMs
                   << " ms, " << lpAvgNs << " ns avg" << std::endl;
         std::cout << "Elapsed: " << elapsedMs << " ms" << std::endl;
@@ -201,14 +203,14 @@ int main(int argc, char** argv) {
         if (!cacheOutTemplate.empty()) {
             bool usedToken = false;
             std::string cachePath = formatCachePath(cacheOutTemplate, i, usedToken);
-            if (usedToken || i == maxN) {
+            if (usedToken || i == n) {
                 if (!usedToken) {
                     cachePath = cacheOutTemplate;
                 }
                 if (!saveEvCache(cachePath)) {
                     return 1;
                 }
-                if (!saveEvCacheMetadata(cachePath, argsJoined, i, i, elapsedMs)) {
+                if (!saveEvCacheMetadata(cachePath, argsJoined, i, totalMs)) {
                     return 1;
                 }
                 std::cout << "cache saved: " << cachePath << std::endl;

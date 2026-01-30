@@ -81,9 +81,14 @@ static int guaranteedOutcome(const State& s) {
     return 0;
 }
 
+static void storeIfEnabled(const StateKey& key, double value) {
+    if (g_enableCache) {
+        evCacheStore(key, value);
+    }
+}
+
 double solveEV(State s) {
-    StateKey key = makeStateKey(s);
-    if (s.diff < 0 && true) {
+    if (s.diff < 0) {
         return -solveEV(State{s.B, s.A, s.P, -s.diff, s.curP});
     }
     //Both only reduce states by around 3% each
@@ -96,6 +101,13 @@ double solveEV(State s) {
         }
     }
 
+    // from now on, either (s.diff > 0 or s.A > s.B), and s.diff >= 0 and s.A >= s.B.
+    if (g_enableCompression) {
+        auto compressed = compressCards(s.A, s.B);
+        s.A = compressed.first;
+        s.B = compressed.second;
+    }
+    StateKey key = makeStateKey(s);
     if (g_enableCache) {
         auto cacheStart = std::chrono::steady_clock::now();
         double cachedValue = 0.0;
@@ -110,17 +122,9 @@ double solveEV(State s) {
     }
     ++g_solveEVCalls;
     if (g_enableGuarantee) {
-        auto guaranteeStart = std::chrono::steady_clock::now();
         int guaranteed = guaranteedOutcome(s);
-        auto guaranteeEnd = std::chrono::steady_clock::now();
-        g_timing.guaranteeNs += std::chrono::duration_cast<std::chrono::nanoseconds>(guaranteeEnd - guaranteeStart).count();
-        ++g_timing.guaranteeCalls;
         if (guaranteed != 0) {
-            ++g_guaranteedDetected;
-            ++g_guaranteedWins;
-            if (g_enableCache) {
-                evCacheStore(key, guaranteed);
-            }
+            storeIfEnabled(key, guaranteed);
             return static_cast<double>(guaranteed);
         }
     }
@@ -128,12 +132,7 @@ double solveEV(State s) {
         std::uint8_t cardA = onlyCard(s.A);
         std::uint8_t cardB = onlyCard(s.B);
         double value = cmp(s.diff + (cmp(cardA, cardB) * s.curP), 0);
-        if (value == 1.0 || value == -1.0) {
-            ++g_guaranteedWins;
-        }
-        if (g_enableCache) {
-            evCacheStore(key, value);
-        }
+        storeIfEnabled(key, value);
         return value;
     }
     auto M = buildMatrix(s);
@@ -143,12 +142,7 @@ double solveEV(State s) {
     g_timing.lpNs += std::chrono::duration_cast<std::chrono::nanoseconds>(lpEnd - lpStart).count();
     ++g_timing.lpCalls;
     if (result.success) {
-        if (result.expectedValue >= 1.0 - 1e-10 || result.expectedValue <= -1.0 + 1e-10) {
-            ++g_guaranteedWins;
-        }
-        if (g_enableCache) {
-            evCacheStore(key, result.expectedValue);
-        }
+        storeIfEnabled(key, result.expectedValue);
         return result.expectedValue;
     }
     std::cerr << "GLPK failed for " << toString(s) << " with "
