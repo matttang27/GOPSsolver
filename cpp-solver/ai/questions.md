@@ -1,0 +1,7 @@
+- What are some simple patterns we can deduct? 
+- How do simple strategies (random, deterministic) fare against NE? 
+- Create an exploitative AI that is based on NE. 
+- Now try NE bots which are purposely biased (for example, plays more 10s when they see 10s, otherwise NE), and compare performance against NE and exploitative 
+- try other forms of rewards 
+- a bot that is rewarded only for winning prizes with slim margins 
+- create a playable site where you can play against various bots, and analyze NE strategy.

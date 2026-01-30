@@ -1,0 +1,36 @@
+{
+  "version": "2.0.0",
+  "inputs": [
+    {
+      "id": "runArgs",
+      "type": "promptString",
+      "description": "Arguments for cpp_solver.exe",
+      "default": ""
+    }
+  ],
+  "tasks": [
+    {
+      "label": "solver build",
+      "type": "shell",
+      "options": {
+        "cwd": "${workspaceFolder}\\cpp-solver"
+      },
+      "command": "cmd",
+      "args": [
+        "/c",
+        "cmake --preset vcpkg && cmake --build --preset vcpkg"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "solver run",
+      "type": "shell",
+      "options": {
+        "cwd": "${workspaceFolder}\\cpp-solver"
+      },
+      "command": ".\\build\\vcpkg\\Release\\cpp_solver.exe",
+      "args": ["${input:runArgs}"],
+      "problemMatcher": []
+    }
+  ]
+}
