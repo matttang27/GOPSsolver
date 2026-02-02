@@ -1,3 +1,4 @@
+﻿import json
 import sys
 import random
 from pathlib import Path
@@ -6,6 +7,7 @@ from typing import Dict, Iterable, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 REPORTS_DIR = Path(__file__).resolve().parent
 if str(REPORTS_DIR) not in sys.path:
@@ -31,18 +33,6 @@ def load_cache(path: str) -> Dict[int, float]:
 
 def build_cache_options() -> List[Path]:
     return sorted(REPORTS_DIR.glob("*.evc"))
-
-
-def reservoir_sample(keys: Iterable[int], sample_size: int, rng: random.Random) -> List[int]:
-    sample: List[int] = []
-    for i, key in enumerate(keys):
-        if i < sample_size:
-            sample.append(key)
-        else:
-            j = rng.randint(0, i)
-            if j < sample_size:
-                sample[j] = key
-    return sample
 
 
 def reservoir_sample_filtered(
@@ -89,6 +79,40 @@ def build_strategy_table(actions: List[int], probs: np.ndarray, evs: np.ndarray)
 
 def format_cards(cards: List[int]) -> str:
     return "[" + ", ".join(str(c) for c in sorted(cards)) + "]"
+
+
+def render_state_summary(
+    cardsA: List[int],
+    cardsB: List[int],
+    cardsP: List[int],
+    diff: int,
+    curP: int,
+    *,
+    key: Optional[int] = None,
+) -> None:
+    data = {
+        "A": format_cards(cardsA),
+        "B": format_cards(cardsB),
+        "P": format_cards(cardsP),
+        "diff": diff,
+        "curP": curP,
+    }
+    if key is not None:
+        data["key"] = key
+    st.write(data)
+
+
+def build_start_state(max_card: int) -> Dict[str, object]:
+    cards = list(range(1, max_card + 1))
+    curP = cards[0] if cards else 1
+    cardsP = [c for c in cards if c != curP]
+    return {
+        "cardsA": cards,
+        "cardsB": cards[:],
+        "cardsP": cardsP,
+        "curP": curP,
+        "diff": 0,
+    }
 
 
 def sync_current_prize() -> None:
@@ -152,9 +176,82 @@ def apply_pending_transition() -> None:
     st.session_state.pending_transition = None
 
 
+def render_copy_button(text: str, label: str) -> None:
+    if "copy_counter" not in st.session_state:
+        st.session_state.copy_counter = 0
+    st.session_state.copy_counter += 1
+    block_id = f"copy_btn_{st.session_state.copy_counter}"
+    payload = json.dumps(text)
+    safe_label = json.dumps(label)
+    components.html(
+        f"""
+        <div style="display:flex;justify-content:flex-end;align-items:center;height:28px;">
+          <button id="{block_id}_btn" type="button" title={safe_label}
+            style="border:1px solid #ccc;border-radius:6px;padding:2px 6px;background:#fff;cursor:pointer;">
+            &#128203;
+          </button>
+          <span id="{block_id}_status" style="font-size:12px;color:#666;margin-left:6px;"></span>
+        </div>
+        <script>
+          (function() {{
+            const btn = document.getElementById("{block_id}_btn");
+            const status = document.getElementById("{block_id}_status");
+            btn.addEventListener("click", () => {{
+              if (navigator.clipboard && navigator.clipboard.writeText) {{
+                navigator.clipboard.writeText({payload}).then(() => {{
+                  status.textContent = "Copied";
+                  setTimeout(() => status.textContent = "", 1200);
+                }}).catch(() => {{
+                  status.textContent = "Copy failed";
+                }});
+              }} else {{
+                status.textContent = "Clipboard unavailable";
+              }}
+            }});
+          }})();
+        </script>
+        """,
+        height=30,
+    )
+
+
+def render_section_header(title: str, caption: Optional[str], copy_text: str, copy_label: str) -> None:
+    header_cols = st.columns([8, 1])
+    with header_cols[0]:
+        st.subheader(title)
+        if caption:
+            st.caption(caption)
+    with header_cols[1]:
+        render_copy_button(copy_text, copy_label)
+
+
+def render_strategy_panel(title: str, ev_value: float, df: pd.DataFrame, copy_label: str) -> None:
+    title_cols = st.columns([6, 1])
+    with title_cols[0]:
+        st.write(f"{title}: {ev_value:+.6f}")
+    with title_cols[1]:
+        render_copy_button(df.to_csv(index=False), copy_label)
+    st.dataframe(df, width="stretch")
+
+
 def main() -> None:
     st.set_page_config(page_title="GOPS EV Cache Explorer", layout="wide")
     st.title("GOPS EV Cache Explorer")
+    st.markdown(
+        """
+        <style>
+        div[data-testid="stButton"] button[kind="primary"] {
+            background-color: #d64545;
+            border: 1px solid #b43333;
+            color: #fff;
+        }
+        div[data-testid="stButton"] button[kind="primary"]:hover {
+            background-color: #c53b3b;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
     apply_pending_transition()
 
@@ -215,6 +312,9 @@ def main() -> None:
             help="Manual: pick hands/prizes. Key: decode a packed cache key. Sample: browse random cached states.",
         )
         st.caption(get_mode_help(mode))
+        if st.button("Reset to start state", type="primary"):
+            st.session_state.pending_transition = build_start_state(int(st.session_state.max_card))
+            trigger_rerun()
 
     if not cache_path:
         st.error("No cache file found. Add a .evc file under cpp-solver/reports.")
@@ -302,15 +402,7 @@ def main() -> None:
                 st.error("Invalid key. Use decimal or 0x-prefixed hex.")
                 return
             cardsA, cardsB, cardsP, diff, curP = decode_key_state(key_val)
-            st.write(
-                {
-                    "A": format_cards(cardsA),
-                    "B": format_cards(cardsB),
-                    "P": format_cards(cardsP),
-                    "diff": diff,
-                    "curP": curP,
-                }
-            )
+            render_state_summary(cardsA, cardsB, cardsP, diff, curP)
             max_from_key = max(cardsA + cardsB + cardsP + ([curP] if curP else []), default=1)
             if max_from_key > max_card:
                 st.session_state.max_card = max_from_key
@@ -370,15 +462,7 @@ def main() -> None:
             st.caption(f"Matched states: {matched}")
         key_val = st.selectbox("Sampled state key", st.session_state.sample_keys)
         cardsA, cardsB, cardsP, diff, curP = decode_key_state(int(key_val))
-        st.write(
-            {
-                "A": format_cards(cardsA),
-                "B": format_cards(cardsB),
-                "P": format_cards(cardsP),
-                "diff": diff,
-                "curP": curP,
-            }
-        )
+        render_state_summary(cardsA, cardsB, cardsP, diff, curP)
 
     cardsA = sorted(cardsA)
     cardsB = sorted(cardsB)
@@ -405,16 +489,7 @@ def main() -> None:
     state_key = encode_key(A_mask, B_mask, P_mask, diff, curP)
 
     st.subheader("State")
-    st.write(
-        {
-            "A": format_cards(cardsA),
-            "B": format_cards(cardsB),
-            "P": format_cards(cardsP),
-            "diff": diff,
-            "curP": curP,
-            "key": state_key,
-        }
-    )
+    render_state_summary(cardsA, cardsB, cardsP, diff, curP, key=state_key)
 
     mat = build_matrix(cache, A_mask, B_mask, P_mask, diff, curP)
     if not mat:
@@ -422,9 +497,16 @@ def main() -> None:
         return
 
     mat_np = np.array(mat, dtype=np.float64)
+    df = pd.DataFrame(mat_np, index=cardsA, columns=cardsB)
 
-    st.subheader("EV Matrix (click a cell to advance)")
-    st.caption("Click any payoff to advance one round using the next prize below.")
+    st.session_state.copy_counter = 0
+    matrix_csv = df.round(4).to_csv(index=True)
+    render_section_header(
+        "EV Matrix (click a cell to advance)",
+        "Click any payoff to advance one round using the next prize below.",
+        matrix_csv,
+        "Copy matrix CSV",
+    )
 
     advance_next = None
     if cardsP:
@@ -479,7 +561,7 @@ def main() -> None:
                     trigger_rerun()
 
     pA, vA = findBestStrategy(mat_np)
-    pB, vB = findBestStrategy(-mat_np.T)
+    pB, _vB = findBestStrategy(-mat_np.T)
 
     st.subheader("Optimal Mixed Strategies")
     if pA is None or pB is None:
@@ -488,15 +570,16 @@ def main() -> None:
 
     ev_a = mat_np @ pB
     ev_b = - (pA @ mat_np)
+    df_a = build_strategy_table(cardsA, pA, ev_a)
+    df_b = build_strategy_table(cardsB, pB, ev_b)
 
     colA, colB = st.columns(2)
     with colA:
-        st.write(f"EV (A perspective): {vA:+.6f}")
-        st.dataframe(build_strategy_table(cardsA, pA, ev_a), width="stretch")
+        render_strategy_panel("EV (A perspective)", vA, df_a, "Copy strategy A CSV")
     with colB:
-        st.write(f"EV (B perspective): {-vA:+.6f}")
-        st.dataframe(build_strategy_table(cardsB, pB, ev_b), width="stretch")
+        render_strategy_panel("EV (B perspective)", -vA, df_b, "Copy strategy B CSV")
 
 
 if __name__ == "__main__":
     main()
+
