@@ -1,4 +1,3 @@
-import os
 import sys
 import random
 from pathlib import Path
@@ -14,6 +13,7 @@ if str(REPORTS_DIR) not in sys.path:
 
 from common import (
     build_matrix,
+    cmp,
     decode_key,
     encode_key,
     list_cards,
@@ -22,20 +22,6 @@ from common import (
     load_meta,
 )
 from linprog import findBestStrategy
-
-
-def resolve_cache_path(raw_path: str) -> Optional[str]:
-    if not raw_path:
-        return None
-    if os.path.exists(raw_path):
-        return raw_path
-    alt_path = REPORTS_DIR / raw_path
-    if alt_path.exists():
-        return str(alt_path)
-    alt_path = (REPORTS_DIR / ".." / raw_path).resolve()
-    if alt_path.exists():
-        return str(alt_path)
-    return None
 
 
 @st.cache_resource(show_spinner=False)
@@ -67,7 +53,13 @@ def decode_key_state(key: int) -> Tuple[List[int], List[int], List[int], int, in
 def build_strategy_table(actions: List[int], probs: np.ndarray, evs: np.ndarray) -> pd.DataFrame:
     rows = []
     for action, p, ev in zip(actions, probs, evs):
-        rows.append({"card": action, "prob": float(p), "ev_vs_mix": float(ev)})
+        rows.append(
+            {
+                "card": action,
+                "prob": round(float(p), 4),
+                "ev_vs_mix": round(float(ev), 4),
+            }
+        )
     return pd.DataFrame(rows)
 
 
@@ -75,9 +67,72 @@ def format_cards(cards: List[int]) -> str:
     return "[" + ", ".join(str(c) for c in sorted(cards)) + "]"
 
 
+def sync_current_prize() -> None:
+    prev = st.session_state.get("curP_prev")
+    new = st.session_state.get("curP")
+    if new is None:
+        return
+    if prev is None:
+        st.session_state.curP_prev = new
+        return
+    if prev == new:
+        return
+    cardsP = list(st.session_state.get("cardsP", []))
+    cardsP = [c for c in cardsP if c != new]
+    card_options = st.session_state.get("card_options", [])
+    if prev in card_options and prev != new and prev not in cardsP:
+        cardsP.append(prev)
+    st.session_state.cardsP = sorted(cardsP)
+    st.session_state.curP_prev = new
+
+
+def get_mode_help(mode: str) -> str:
+    if mode == "Manual":
+        return "Pick the hands/prizes directly and explore specific states."
+    if mode == "Key":
+        return "Paste a packed cache key to decode a state."
+    if mode == "Sample":
+        return "Browse a random sample of cached states."
+    return ""
+
+
+def trigger_rerun() -> None:
+    if hasattr(st, "rerun"):
+        st.rerun()
+    else:
+        st.experimental_rerun()
+
+
+def resolve_next_prize(selection: object, options: List[int]) -> Optional[int]:
+    if not options:
+        return None
+    if isinstance(selection, str) and selection.lower() == "random":
+        return random.choice(options)
+    try:
+        return int(selection)
+    except (TypeError, ValueError):
+        return None
+
+
+def apply_pending_transition() -> None:
+    pending = st.session_state.get("pending_transition")
+    if not pending:
+        return
+    st.session_state.cardsA = pending["cardsA"]
+    st.session_state.cardsB = pending["cardsB"]
+    st.session_state.cardsP = pending["cardsP"]
+    st.session_state.curP = pending["curP"]
+    st.session_state.curP_prev = pending["curP"]
+    st.session_state.diff = pending["diff"]
+    st.session_state.mode = "Manual"
+    st.session_state.pending_transition = None
+
+
 def main() -> None:
     st.set_page_config(page_title="GOPS EV Cache Explorer", layout="wide")
     st.title("GOPS EV Cache Explorer")
+
+    apply_pending_transition()
 
     cache_files = build_cache_options()
     cache_names = [p.name for p in cache_files]
@@ -90,13 +145,7 @@ def main() -> None:
             index=0 if cache_names else None,
             disabled=not cache_names,
         )
-        custom_path = st.text_input("Custom cache path (optional)")
-        if custom_path.strip():
-            cache_path = resolve_cache_path(custom_path.strip())
-        elif cache_choice:
-            cache_path = str(REPORTS_DIR / cache_choice)
-        else:
-            cache_path = None
+        cache_path = str(REPORTS_DIR / cache_choice) if cache_choice else None
 
         if cache_path:
             meta = load_meta(cache_path)
@@ -113,23 +162,20 @@ def main() -> None:
         else:
             meta = None
 
-        if "cache_ready" not in st.session_state:
-            st.session_state.cache_ready = False
+        run_n = meta.get("run", {}).get("N") if meta else None
         if "cache_path_loaded" not in st.session_state:
-            st.session_state.cache_path_loaded = None
-
-        if cache_path != st.session_state.cache_path_loaded:
-            st.session_state.cache_ready = False
-
-        load_clicked = st.button("Load cache", disabled=not cache_path)
-        if load_clicked:
-            st.session_state.cache_ready = True
             st.session_state.cache_path_loaded = cache_path
+            if run_n is not None:
+                st.session_state.max_card = int(run_n)
+        elif cache_path != st.session_state.cache_path_loaded:
+            st.session_state.cache_path_loaded = cache_path
+            if run_n is not None:
+                st.session_state.max_card = int(run_n)
 
         st.divider()
         st.header("State Input")
         if "max_card" not in st.session_state:
-            st.session_state.max_card = int(meta.get("run", {}).get("N", 9)) if meta else 9
+            st.session_state.max_card = int(run_n) if run_n is not None else 9
         st.number_input(
             "Max card value (N)",
             min_value=1,
@@ -137,14 +183,17 @@ def main() -> None:
             value=int(st.session_state.max_card),
             key="max_card",
         )
-        mode = st.radio("Mode", ["Manual", "Key", "Sample"], horizontal=True, key="mode")
+        mode = st.radio(
+            "Mode",
+            ["Manual", "Key", "Sample"],
+            horizontal=True,
+            key="mode",
+            help="Manual: pick hands/prizes. Key: decode a packed cache key. Sample: browse random cached states.",
+        )
+        st.caption(get_mode_help(mode))
 
     if not cache_path:
-        st.error("No cache file found. Add a .evc file under cpp-solver/reports or enter a custom path.")
-        return
-
-    if not st.session_state.cache_ready:
-        st.info("Load a cache to explore EV matrices.")
+        st.error("No cache file found. Add a .evc file under cpp-solver/reports.")
         return
 
     with st.spinner("Loading cache..."):
@@ -152,6 +201,7 @@ def main() -> None:
 
     max_card = int(st.session_state.max_card)
     card_options = list(range(1, max_card + 1))
+    st.session_state.card_options = card_options
 
     if "cardsA" not in st.session_state:
         st.session_state.cardsA = card_options[:]
@@ -160,6 +210,7 @@ def main() -> None:
         st.session_state.cardsP = [c for c in card_options if c != st.session_state.curP]
         st.session_state.diff = 0
         st.session_state.cardsA_n = max_card
+        st.session_state.curP_prev = st.session_state.curP
     elif st.session_state.get("cardsA_n") != max_card:
         st.session_state.cardsA = [c for c in st.session_state.cardsA if c in card_options] or card_options[:]
         st.session_state.cardsB = [c for c in st.session_state.cardsB if c in card_options] or card_options[:]
@@ -169,6 +220,7 @@ def main() -> None:
         if not st.session_state.cardsP:
             st.session_state.cardsP = [c for c in card_options if c != st.session_state.curP]
         st.session_state.cardsA_n = max_card
+        st.session_state.curP_prev = st.session_state.curP
 
     cardsA: List[int] = []
     cardsB: List[int] = []
@@ -197,6 +249,7 @@ def main() -> None:
                 card_options,
                 index=card_options.index(st.session_state.curP) if st.session_state.curP in card_options else 0,
                 key="curP",
+                on_change=sync_current_prize,
             )
             cardsP = st.multiselect(
                 "Remaining prizes (exclude current)",
@@ -242,6 +295,7 @@ def main() -> None:
                 st.session_state.cardsB = cardsB
                 st.session_state.cardsP = cardsP
                 st.session_state.curP = curP
+                st.session_state.curP_prev = curP
                 st.session_state.diff = diff
                 st.session_state.cardsA_n = max(st.session_state.max_card, max_from_key)
                 st.session_state.mode = "Manual"
@@ -315,10 +369,61 @@ def main() -> None:
         return
 
     mat_np = np.array(mat, dtype=np.float64)
-    df = pd.DataFrame(mat_np, index=cardsA, columns=cardsB)
 
-    st.subheader("EV Matrix (A rows vs B columns)")
-    st.dataframe(df, use_container_width=True)
+    st.subheader("EV Matrix (click a cell to advance)")
+    st.caption("Click any payoff to advance one round using the next prize below.")
+
+    advance_next = None
+    if cardsP:
+        advance_options: List[object] = ["Random"] + cardsP
+        if (
+            "advance_next_prize" not in st.session_state
+            or st.session_state.advance_next_prize not in advance_options
+        ):
+            st.session_state.advance_next_prize = "Random"
+        advance_col, _spacer = st.columns([1, 4])
+        with advance_col:
+            advance_next = st.selectbox(
+                "Next prize",
+                advance_options,
+                key="advance_next_prize",
+                help="Used when you click a matrix cell to advance one round.",
+            )
+    else:
+        st.caption("No remaining prizes to advance from this state.")
+
+    st.markdown("**Clickable Matrix**")
+    click_cols = st.columns([1] + [1] * len(cardsB))
+    with click_cols[0]:
+        st.markdown("**A \\ B**")
+    for col_idx, cardB in enumerate(cardsB):
+        with click_cols[col_idx + 1]:
+            st.markdown(f"**{cardB}**")
+
+    for row_idx, cardA in enumerate(cardsA):
+        row_cols = st.columns([1] + [1] * len(cardsB))
+        with row_cols[0]:
+            st.markdown(f"**{cardA}**")
+        for col_idx, cardB in enumerate(cardsB):
+            label = f"{mat_np[row_idx, col_idx]:+.4f}"
+            if row_cols[col_idx + 1].button(
+                label,
+                key=f"cell_{state_key}_{cardA}_{cardB}",
+                disabled=not cardsP,
+            ):
+                if cardsP:
+                    next_prize = resolve_next_prize(advance_next, cardsP)
+                    if next_prize is None:
+                        next_prize = cardsP[0]
+                    new_diff = diff + cmp(cardA, cardB) * curP
+                    st.session_state.pending_transition = {
+                        "cardsA": [c for c in cardsA if c != cardA],
+                        "cardsB": [c for c in cardsB if c != cardB],
+                        "cardsP": [c for c in cardsP if c != next_prize],
+                        "curP": int(next_prize),
+                        "diff": int(new_diff),
+                    }
+                    trigger_rerun()
 
     pA, vA = findBestStrategy(mat_np)
     pB, vB = findBestStrategy(-mat_np.T)
@@ -334,10 +439,10 @@ def main() -> None:
     colA, colB = st.columns(2)
     with colA:
         st.write(f"EV (A perspective): {vA:+.6f}")
-        st.dataframe(build_strategy_table(cardsA, pA, ev_a), use_container_width=True)
+        st.dataframe(build_strategy_table(cardsA, pA, ev_a), width="stretch")
     with colB:
         st.write(f"EV (B perspective): {-vA:+.6f}")
-        st.dataframe(build_strategy_table(cardsB, pB, ev_b), use_container_width=True)
+        st.dataframe(build_strategy_table(cardsB, pB, ev_b), width="stretch")
 
 
 if __name__ == "__main__":

@@ -202,6 +202,10 @@ def guaranteed(cardsA: tuple[int, ...], cardsB: tuple[int, ...], pointDiff: int,
     
     guaranteeA = sum(1 for card in cardsA if card > cardsB[-1])
     guaranteeB = sum(1 for card in cardsB if card > cardsA[-1])
+    if guaranteeA > cardsLeft:
+        guaranteeA = cardsLeft
+    if guaranteeB > cardsLeft:
+        guaranteeB = cardsLeft
     
     if (guarantee[guaranteeA] + pointDiff) > 0:
         return 1
