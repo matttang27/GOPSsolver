@@ -64,19 +64,6 @@ def decode_key_state(key: int) -> Tuple[List[int], List[int], List[int], int, in
     return list_cards(A), list_cards(B), list_cards(P), diff, curP
 
 
-def build_strategy_table(actions: List[int], probs: np.ndarray, evs: np.ndarray) -> pd.DataFrame:
-    rows = []
-    for action, p, ev in zip(actions, probs, evs):
-        rows.append(
-            {
-                "card": action,
-                "prob": round(float(p), 4),
-                "ev_vs_mix": round(float(ev), 4),
-            }
-        )
-    return pd.DataFrame(rows)
-
-
 def format_cards(cards: List[int]) -> str:
     return "[" + ", ".join(str(c) for c in sorted(cards)) + "]"
 
@@ -100,6 +87,25 @@ def render_state_summary(
     if key is not None:
         data["key"] = key
     st.write(data)
+
+
+def display_value(ev: float, display_percent: bool) -> float:
+    return 50.0 + 50.0 * ev if display_percent else ev
+
+
+def build_strategy_table(actions: List[int], probs: np.ndarray, evs: np.ndarray, display_percent: bool) -> pd.DataFrame:
+    display_col = "win_pct_vs_mix" if display_percent else "ev_vs_mix"
+    rows = []
+    for action, p, ev in zip(actions, probs, evs):
+        value = display_value(float(ev), display_percent)
+        rows.append(
+            {
+                "card": action,
+                "prob": round(float(p), 4),
+                display_col: round(value, 2 if display_percent else 4),
+            }
+        )
+    return pd.DataFrame(rows)
 
 
 def build_start_state(max_card: int) -> Dict[str, object]:
@@ -225,10 +231,10 @@ def render_section_header(title: str, caption: Optional[str], copy_text: str, co
         render_copy_button(copy_text, copy_label)
 
 
-def render_strategy_panel(title: str, ev_value: float, df: pd.DataFrame, copy_label: str) -> None:
+def render_strategy_panel(title: str, value_label: str, df: pd.DataFrame, copy_label: str) -> None:
     title_cols = st.columns([6, 1])
     with title_cols[0]:
-        st.write(f"{title}: {ev_value:+.6f}")
+        st.write(f"{title}: {value_label}")
     with title_cols[1]:
         render_copy_button(df.to_csv(index=False), copy_label)
     st.dataframe(df, width="stretch")
@@ -237,6 +243,12 @@ def render_strategy_panel(title: str, ev_value: float, df: pd.DataFrame, copy_la
 def main() -> None:
     st.set_page_config(page_title="GOPS EV Cache Explorer", layout="wide")
     st.title("GOPS EV Cache Explorer")
+    display_percent = st.toggle(
+        "Show win %",
+        value=False,
+        key="display_percent",
+        help="Win % = 50 + 50*EV",
+    )
     st.markdown(
         """
         <style>
@@ -498,11 +510,13 @@ def main() -> None:
 
     mat_np = np.array(mat, dtype=np.float64)
     df = pd.DataFrame(mat_np, index=cardsA, columns=cardsB)
+    display_df = (50.0 + 50.0 * df).round(2) if display_percent else df.round(4)
 
     st.session_state.copy_counter = 0
-    matrix_csv = df.round(4).to_csv(index=True)
+    matrix_csv = display_df.to_csv(index=True)
+    matrix_title = "Win % Matrix (click a cell to advance)" if display_percent else "EV Matrix (click a cell to advance)"
     render_section_header(
-        "EV Matrix (click a cell to advance)",
+        matrix_title,
         "Click any payoff to advance one round using the next prize below.",
         matrix_csv,
         "Copy matrix CSV",
@@ -540,7 +554,8 @@ def main() -> None:
         with row_cols[0]:
             st.markdown(f"**{cardA}**")
         for col_idx, cardB in enumerate(cardsB):
-            label = f"{mat_np[row_idx, col_idx]:+.4f}"
+            value = display_value(float(mat_np[row_idx, col_idx]), display_percent)
+            label = f"{value:.2f}%" if display_percent else f"{value:+.4f}"
             if row_cols[col_idx + 1].button(
                 label,
                 key=f"cell_{state_key}_{cardA}_{cardB}",
@@ -570,16 +585,19 @@ def main() -> None:
 
     ev_a = mat_np @ pB
     ev_b = - (pA @ mat_np)
-    df_a = build_strategy_table(cardsA, pA, ev_a)
-    df_b = build_strategy_table(cardsB, pB, ev_b)
+    df_a = build_strategy_table(cardsA, pA, ev_a, display_percent)
+    df_b = build_strategy_table(cardsB, pB, ev_b, display_percent)
 
     colA, colB = st.columns(2)
     with colA:
-        render_strategy_panel("EV (A perspective)", vA, df_a, "Copy strategy A CSV")
+        title = "Win % (A perspective)" if display_percent else "EV (A perspective)"
+        value_label = f"{display_value(float(vA), True):.2f}%" if display_percent else f"{float(vA):+.6f}"
+        render_strategy_panel(title, value_label, df_a, "Copy strategy A CSV")
     with colB:
-        render_strategy_panel("EV (B perspective)", -vA, df_b, "Copy strategy B CSV")
+        title = "Win % (B perspective)" if display_percent else "EV (B perspective)"
+        value_label = f"{display_value(float(-vA), True):.2f}%" if display_percent else f"{float(-vA):+.6f}"
+        render_strategy_panel(title, value_label, df_b, "Copy strategy B CSV")
 
 
 if __name__ == "__main__":
     main()
-
