@@ -38,6 +38,34 @@ def make_highest_strategy() -> ActionFn:
     return _strategy
 
 
+def make_lowest_strategy() -> ActionFn:
+    def _strategy(state: State) -> int:
+        return min(list_cards(state.A))
+
+    return _strategy
+
+
+def make_current_strategy() -> ActionFn:
+    def _strategy(state: State) -> int:
+        cards = list_cards(state.A)
+        if state.curP in cards:
+            return state.curP
+        return min(cards)
+
+    return _strategy
+
+
+def make_exploit_current_strategy() -> ActionFn:
+    def _strategy(state: State) -> int:
+        cards = sorted(list_cards(state.A))
+        for card in cards:
+            if card > state.curP:
+                return card
+        return cards[0]
+
+    return _strategy
+
+
 def make_evc_ne_strategy(cache: Dict[int, float], rng: Optional[random.Random] = None) -> ActionFn:
     rng = rng or random
 
@@ -56,7 +84,7 @@ def make_evc_ne_strategy(cache: Dict[int, float], rng: Optional[random.Random] =
 
 
 def strategy_choices() -> List[str]:
-    return ["random", "highest", "evc-ne"]
+    return ["random", "highest", "lowest", "current", "exploit-current", "evc-ne"]
 
 
 def strategy_requires_cache(name: str) -> bool:
@@ -71,8 +99,22 @@ def build_strategy(name: str,
         return make_random_strategy(rng=rng)
     if name == "highest":
         return make_highest_strategy()
+    if name == "lowest":
+        return make_lowest_strategy()
+    if name == "current":
+        return make_current_strategy()
+    if name == "exploit-current":
+        return make_exploit_current_strategy()
     if name == "evc-ne":
         if cache is None:
             raise ValueError("evc-ne strategy requires a cache")
         return make_evc_ne_strategy(cache, rng=rng)
     raise ValueError(f"Unknown strategy: {name}")
+
+
+def strategy_label(name: str, seed: Optional[int]) -> str:
+    if seed is None:
+        return name
+    if seed == 0:
+        return f"{name}(seed=random)"
+    return f"{name}(seed={seed})"

@@ -2,7 +2,7 @@ import argparse
 import os
 import sys
 import random
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -11,7 +11,7 @@ if REPORTS_DIR not in sys.path:
     sys.path.insert(0, REPORTS_DIR)
 
 from common import State, build_matrix, cmp, list_cards, load_evc, remove_card
-from strategies import ActionFn, build_strategy, sample_action, strategy_choices, strategy_requires_cache
+from strategies import ActionFn, build_strategy, sample_action, strategy_choices, strategy_label, strategy_requires_cache
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 PYTHON_DIR = os.path.join(ROOT, "python")
@@ -19,6 +19,13 @@ if PYTHON_DIR not in sys.path:
     sys.path.insert(0, PYTHON_DIR)
 
 from linprog import findBestStrategy
+
+ChooseFn = Callable[[State, State], Tuple[int, int]]
+
+
+class AbortGame(RuntimeError):
+    pass
+
 
 def format_probs(actions: List[int], probs: np.ndarray) -> str:
     parts = []
@@ -28,12 +35,18 @@ def format_probs(actions: List[int], probs: np.ndarray) -> str:
     return "{" + ", ".join(parts) + "}"
 
 
-def auto_play_game(n: int,
-                   seed: int,
-                   stratA: ActionFn,
-                   stratB: ActionFn,
-                   verbose: bool = True,
-                   rng: Optional[random.Random] = None) -> int:
+def print_game_state(state: State, *, label_a: str, label_b: str) -> None:
+    print("\nPrize:", state.curP, "Remaining prizes:", sorted(list_cards(state.P)))
+    print("Current diff:", state.diff)
+    print(f"{label_a} hand:", list_cards(state.A))
+    print(f"{label_b} hand:", list_cards(state.B))
+
+
+def run_game(n: int,
+             seed: int,
+             choose_actions: ChooseFn,
+             *,
+             rng: Optional[random.Random] = None) -> int:
     rng = rng or (random.Random(seed) if seed != 0 else random)
     prizes = list(range(1, n + 1))
     rng.shuffle(prizes)
@@ -47,29 +60,16 @@ def auto_play_game(n: int,
         P |= 1 << (p - 1)
     diff = 0
 
-    round_idx = 1
     while A:
-        if verbose:
-            print("\nRound", round_idx)
-            print("Prize:", curP, "Remaining prizes:", sorted(remaining))
-            print("Current diff:", diff)
-            print("Player A hand:", list_cards(A))
-            print("Player B hand:", list_cards(B))
-
         state = State(A=A, B=B, P=P, diff=diff, curP=curP)
         state_for_b = State(A=B, B=A, P=P, diff=-diff, curP=curP)
         cardsA = list_cards(A)
         cardsB = list_cards(B)
-        choiceA = stratA(state)
-        choiceB = stratB(state_for_b)
+        choiceA, choiceB = choose_actions(state, state_for_b)
         if choiceA not in cardsA:
             raise ValueError(f"Strategy A returned invalid card: {choiceA}")
         if choiceB not in cardsB:
             raise ValueError(f"Strategy B returned invalid card: {choiceB}")
-
-        if verbose:
-            print("Player A plays:", choiceA)
-            print("Player B plays:", choiceB)
 
         diff += cmp(choiceA, choiceB) * curP
 
@@ -81,8 +81,35 @@ def auto_play_game(n: int,
         curP = remaining[0]
         remaining = remaining[1:]
         P = remove_card(P, curP)
-        round_idx += 1
 
+    return diff
+
+
+def make_auto_choose_actions(stratA: ActionFn,
+                             stratB: ActionFn,
+                             *,
+                             verbose: bool) -> ChooseFn:
+    def _choose(state: State, state_for_b: State) -> Tuple[int, int]:
+        if verbose:
+            print_game_state(state, label_a="Player A", label_b="Player B")
+        choiceA = stratA(state)
+        choiceB = stratB(state_for_b)
+        if verbose:
+            print("Player A plays:", choiceA)
+            print("Player B plays:", choiceB)
+        return choiceA, choiceB
+
+    return _choose
+
+
+def auto_play_game(n: int,
+                   seed: int,
+                   stratA: ActionFn,
+                   stratB: ActionFn,
+                   verbose: bool = True,
+                   rng: Optional[random.Random] = None) -> int:
+    choose_actions = make_auto_choose_actions(stratA, stratB, verbose=verbose)
+    diff = run_game(n, seed, choose_actions, rng=rng)
     if verbose:
         print("\nFinal diff:", diff)
         if diff > 0:
@@ -101,43 +128,25 @@ def auto_play_random(n: int, seed: int, verbose: bool = True) -> int:
 
 
 def play_game(cache: Dict[int, float], n: int, seed: int) -> None:
-    rng = random.Random(seed) if seed != 0 else random
-    prizes = list(range(1, n + 1))
-    rng.shuffle(prizes)
+    def choose_actions(state: State, _state_for_b: State) -> Tuple[int, int]:
+        print_game_state(state, label_a="Your", label_b="Bot")
 
-    A = (1 << n) - 1
-    B = (1 << n) - 1
-    curP = prizes[0]
-    remaining = prizes[1:]
-    P = 0
-    for p in remaining:
-        P |= 1 << (p - 1)
-    diff = 0
+        cardsA = list_cards(state.A)
+        cardsB = list_cards(state.B)
 
-    round_idx = 1
-    while A:
-        print("\nRound", round_idx)
-        print("Prize:", curP, "Remaining prizes:", sorted(remaining))
-        print("Current diff:", diff)
-
-        print("Your hand:", list_cards(A))
-        print("Bot hand:", list_cards(B))
-
-        cardsA = list_cards(A)
-        cardsB = list_cards(B)
-        mat = build_matrix(cache, A, B, P, diff, curP)
+        mat = build_matrix(cache, state.A, state.B, state.P, state.diff, state.curP)
         if not mat:
             print("Matrix build failed for current state.")
-            return
+            raise AbortGame()
         mat = np.array(mat, dtype=np.float64)
-        pA, v = findBestStrategy(mat)
+        pA, _v = findBestStrategy(mat)
         if pA is None:
             print("LP failed for player strategy")
-            return
-        pB, vB = findBestStrategy(-mat.T)
+            raise AbortGame()
+        pB, _vB = findBestStrategy(-mat.T)
         if pB is None:
             print("LP failed for bot strategy")
-            return
+            raise AbortGame()
 
         ev_per_action = []
         for i, _cardA in enumerate(cardsA):
@@ -161,17 +170,12 @@ def play_game(cache: Dict[int, float], n: int, seed: int) -> None:
         bot_choice = sample_action(cardsB, pB)
 
         print("Bot plays:", bot_choice)
-        diff += cmp(choice, bot_choice) * curP
+        return choice, bot_choice
 
-        A = remove_card(A, choice)
-        B = remove_card(B, bot_choice)
-
-        if not remaining:
-            break
-        curP = remaining[0]
-        remaining = remaining[1:]
-        P = remove_card(P, curP)
-        round_idx += 1
+    try:
+        diff = run_game(n, seed, choose_actions)
+    except AbortGame:
+        return
 
     print("\nFinal diff:", diff)
     if diff > 0:
@@ -206,7 +210,9 @@ def main() -> None:
     parser.add_argument("--auto", action="store_true", help="Auto-play with random strategies (no cache needed)")
     parser.add_argument("--random", action="store_true", help="Alias for --auto")
     parser.add_argument("--count", type=int, default=1, help="Number of auto-play games to run")
-    parser.add_argument("--quiet", action="store_true", help="Reduce output for auto-play")
+    parser.add_argument("--verbose", dest="verbose", action="store_true", help="Verbose output for auto-play")
+    parser.add_argument("--quiet", dest="verbose", action="store_false", help="Reduce output for auto-play")
+    parser.set_defaults(verbose=False)
     strat_choices = strategy_choices()
     group_a = parser.add_argument_group("Strategy A")
     group_a.add_argument("--sa", default="random", choices=strat_choices, help="Strategy for player A")
@@ -231,6 +237,10 @@ def main() -> None:
                 print("Cache file required for the selected strategy (evc-ne).")
                 return
             cache = load_evc(cache_path)
+        wins_a = 0
+        wins_b = 0
+        draws = 0
+        total_diff = 0
         for i in range(args.count):
             seed_i = seed if seed == 0 else seed + i
             rng_game = random.Random(seed_i) if seed_i != 0 else random
@@ -242,7 +252,29 @@ def main() -> None:
                 rng_b = random.Random(args.sb_seed) if args.sb_seed != 0 else random
             stratA = build_strategy(args.sa, cache=cache, rng=rng_a)
             stratB = build_strategy(args.sb, cache=cache, rng=rng_b)
-            auto_play_game(n, seed_i, stratA, stratB, verbose=not args.quiet, rng=rng_game)
+            diff = auto_play_game(n, seed_i, stratA, stratB, verbose=args.verbose, rng=rng_game)
+            total_diff += diff
+            if diff > 0:
+                wins_a += 1
+            elif diff < 0:
+                wins_b += 1
+            else:
+                draws += 1
+        total_games = args.count
+        avg_diff = total_diff / total_games
+        avg_ev = (wins_a - wins_b) / total_games
+        label_a = strategy_label(args.sa, args.sa_seed)
+        label_b = strategy_label(args.sb, args.sb_seed)
+        if total_games > 1 or not args.verbose:
+            print("\nSeries summary")
+            print(f"Games: {total_games}")
+            print(f"Strategy A: {label_a}")
+            print(f"Strategy B: {label_b}")
+            print(f"A wins: {wins_a} ({wins_a / total_games * 100:.1f}%)")
+            print(f"B wins: {wins_b} ({wins_b / total_games * 100:.1f}%)")
+            print(f"Draws: {draws} ({draws / total_games * 100:.1f}%)")
+            print(f"Average point diff (A-B): {avg_diff:+.3f}")
+            print(f"Average EV (A=+1, B=-1): {avg_ev:+.3f}")
         return
 
     if not args.cache:
