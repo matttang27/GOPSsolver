@@ -231,13 +231,50 @@ def render_section_header(title: str, caption: Optional[str], copy_text: str, co
         render_copy_button(copy_text, copy_label)
 
 
-def render_strategy_panel(title: str, value_label: str, df: pd.DataFrame, copy_label: str) -> None:
+def render_strategy_panel(
+    title: str,
+    value_label: str,
+    df: pd.DataFrame,
+    copy_label: str,
+    support_cards: Optional[set[int]] = None,
+) -> None:
     title_cols = st.columns([6, 1])
     with title_cols[0]:
         st.write(f"{title}: {value_label}")
     with title_cols[1]:
         render_copy_button(df.to_csv(index=False), copy_label)
-    st.dataframe(df, width="stretch")
+    if support_cards:
+        st.dataframe(style_support_rows(df, support_cards), width="stretch", hide_index=True)
+    else:
+        st.dataframe(df, width="stretch", hide_index=True)
+
+
+def get_highlight_colors() -> Dict[str, str]:
+    base = st.get_option("theme.base")
+    if base == "dark":
+        return {
+            "row_bg": "#1f3d1f",
+            "row_fg": "#e5f5e5",
+            "cell_bg": "#4a3b0b",
+            "cell_fg": "#fff2cc",
+        }
+    return {
+        "row_bg": "#e8f7e8",
+        "row_fg": "#1f3d1f",
+        "cell_bg": "#fff2a8",
+        "cell_fg": "#5a4b00",
+    }
+
+
+def style_support_rows(df: pd.DataFrame, support_cards: set[int]):
+    colors = get_highlight_colors()
+
+    def _row_style(row: pd.Series) -> List[str]:
+        if row.get("card") in support_cards:
+            return [f"background-color: {colors['row_bg']}; color: {colors['row_fg']}"] * len(row)
+        return [""] * len(row)
+
+    return df.style.apply(_row_style, axis=1)
 
 
 def main() -> None:
@@ -252,12 +289,12 @@ def main() -> None:
     st.markdown(
         """
         <style>
-        div[data-testid="stButton"] button[kind="primary"] {
+        section[data-testid="stSidebar"] div[data-testid="stButton"] button[kind="primary"] {
             background-color: #d64545;
             border: 1px solid #b43333;
             color: #fff;
         }
-        div[data-testid="stButton"] button[kind="primary"]:hover {
+        section[data-testid="stSidebar"] div[data-testid="stButton"] button[kind="primary"]:hover {
             background-color: #c53b3b;
         }
         </style>
@@ -512,6 +549,10 @@ def main() -> None:
     df = pd.DataFrame(mat_np, index=cardsA, columns=cardsB)
     display_df = (50.0 + 50.0 * df).round(2) if display_percent else df.round(4)
 
+    pA, vA = findBestStrategy(mat_np)
+    pB, _vB = findBestStrategy(-mat_np.T)
+    strategies_ok = pA is not None and pB is not None
+
     st.session_state.copy_counter = 0
     matrix_csv = display_df.to_csv(index=True)
     matrix_title = "Win % Matrix (click a cell to advance)" if display_percent else "EV Matrix (click a cell to advance)"
@@ -541,25 +582,37 @@ def main() -> None:
     else:
         st.caption("No remaining prizes to advance from this state.")
 
+    if strategies_ok:
+        support_a = {card for card, prob in zip(cardsA, pA) if prob > 1e-6}
+        support_b = {card for card, prob in zip(cardsB, pB) if prob > 1e-6}
+    else:
+        support_a = set()
+        support_b = set()
+
     st.markdown("**Clickable Matrix**")
+    st.caption("Buttons are colored when both actions are optimal (positive probability in the mixed strategy).")
     click_cols = st.columns([1] + [1] * len(cardsB))
     with click_cols[0]:
         st.markdown("**A \\ B**")
     for col_idx, cardB in enumerate(cardsB):
         with click_cols[col_idx + 1]:
-            st.markdown(f"**{cardB}**")
+            label = f"{cardB} (opt)" if cardB in support_b else f"{cardB}"
+            st.markdown(f"**{label}**")
 
     for row_idx, cardA in enumerate(cardsA):
         row_cols = st.columns([1] + [1] * len(cardsB))
         with row_cols[0]:
-            st.markdown(f"**{cardA}**")
+            label = f"{cardA} (opt)" if cardA in support_a else f"{cardA}"
+            st.markdown(f"**{label}**")
         for col_idx, cardB in enumerate(cardsB):
             value = display_value(float(mat_np[row_idx, col_idx]), display_percent)
             label = f"{value:.2f}%" if display_percent else f"{value:+.4f}"
+            is_opt_cell = cardA in support_a and cardB in support_b
             if row_cols[col_idx + 1].button(
                 label,
                 key=f"cell_{state_key}_{cardA}_{cardB}",
                 disabled=not cardsP,
+                type="primary" if is_opt_cell else "secondary",
             ):
                 if cardsP:
                     next_prize = resolve_next_prize(advance_next, cardsP)
@@ -575,11 +628,8 @@ def main() -> None:
                     }
                     trigger_rerun()
 
-    pA, vA = findBestStrategy(mat_np)
-    pB, _vB = findBestStrategy(-mat_np.T)
-
     st.subheader("Optimal Mixed Strategies")
-    if pA is None or pB is None:
+    if not strategies_ok:
         st.error("Failed to compute optimal strategies.")
         return
 
@@ -592,11 +642,11 @@ def main() -> None:
     with colA:
         title = "Win % (A perspective)" if display_percent else "EV (A perspective)"
         value_label = f"{display_value(float(vA), True):.2f}%" if display_percent else f"{float(vA):+.6f}"
-        render_strategy_panel(title, value_label, df_a, "Copy strategy A CSV")
+        render_strategy_panel(title, value_label, df_a, "Copy strategy A CSV", support_a)
     with colB:
         title = "Win % (B perspective)" if display_percent else "EV (B perspective)"
         value_label = f"{display_value(float(-vA), True):.2f}%" if display_percent else f"{float(-vA):+.6f}"
-        render_strategy_panel(title, value_label, df_b, "Copy strategy B CSV")
+        render_strategy_panel(title, value_label, df_b, "Copy strategy B CSV", support_b)
 
 
 if __name__ == "__main__":
