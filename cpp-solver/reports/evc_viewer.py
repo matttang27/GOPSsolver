@@ -45,6 +45,30 @@ def reservoir_sample(keys: Iterable[int], sample_size: int, rng: random.Random) 
     return sample
 
 
+def reservoir_sample_filtered(
+    keys: Iterable[int],
+    sample_size: int,
+    rng: random.Random,
+    *,
+    cards_per_player: Optional[int] = None,
+) -> Tuple[List[int], int]:
+    sample: List[int] = []
+    seen = 0
+    for key in keys:
+        if cards_per_player is not None:
+            A_mask, B_mask, _P_mask, _diff, _curP = decode_key(key)
+            if A_mask.bit_count() != cards_per_player or B_mask.bit_count() != cards_per_player:
+                continue
+        if seen < sample_size:
+            sample.append(key)
+        else:
+            j = rng.randint(0, seen)
+            if j < sample_size:
+                sample[j] = key
+        seen += 1
+    return sample, seen
+
+
 def decode_key_state(key: int) -> Tuple[List[int], List[int], List[int], int, int]:
     A, B, P, diff, curP = decode_key(key)
     return list_cards(A), list_cards(B), list_cards(P), diff, curP
@@ -306,15 +330,44 @@ def main() -> None:
     else:  # Sample
         if "sample_keys" not in st.session_state:
             st.session_state.sample_keys = []
+        if "sample_params" not in st.session_state:
+            st.session_state.sample_params = None
         rng_seed = st.number_input("Sample RNG seed", min_value=0, max_value=2**31 - 1, value=0, step=1)
+        if "sample_cards" in st.session_state and st.session_state.sample_cards > max_card:
+            st.session_state.sample_cards = max_card
+        sample_cards = st.number_input(
+            "Cards per player (N)",
+            min_value=1,
+            max_value=max_card,
+            value=max_card,
+            step=1,
+            key="sample_cards",
+        )
         sample_size = st.number_input("Sample size", min_value=1, max_value=5000, value=200, step=1)
-        if st.button("Build sample list"):
+        params = (
+            int(rng_seed),
+            int(sample_cards),
+            int(sample_size),
+            st.session_state.cache_path_loaded,
+        )
+        if st.session_state.sample_params != params:
             rng = random.Random(int(rng_seed))
             with st.spinner("Sampling cache keys..."):
-                st.session_state.sample_keys = reservoir_sample(cache.keys(), int(sample_size), rng)
+                sample, matched = reservoir_sample_filtered(
+                    cache.keys(),
+                    int(sample_size),
+                    rng,
+                    cards_per_player=int(sample_cards),
+                )
+                st.session_state.sample_keys = sample
+                st.session_state.sample_matched = matched
+                st.session_state.sample_params = params
         if not st.session_state.sample_keys:
             st.info("Build a sample list to browse random states.")
             return
+        matched = st.session_state.get("sample_matched")
+        if matched is not None:
+            st.caption(f"Matched states: {matched}")
         key_val = st.selectbox("Sampled state key", st.session_state.sample_keys)
         cardsA, cardsB, cardsP, diff, curP = decode_key_state(int(key_val))
         st.write(
