@@ -1,0 +1,146 @@
+Round 1
+Prize: 1 Remaining prizes: [2, 3, 4, 5, 6, 7, 8, 9]
+Current diff: 0
+Your hand: [1, 2, 3, 4, 5, 6, 7, 8, 9]
+Bot hand: [1, 2, 3, 4, 5, 6, 7, 8, 9]
+NE probs (you): {1:0.338, 2:0.175, 3:0.487}
+NE probs (bot): {1:0.338, 2:0.175, 3:0.487}
+EV by action vs bot mix:
+   1 -> -0.0000 <==
+   2 -> -0.0000 <==
+   3 -> +0.0000 <==
+   4 -> -0.0472
+   5 -> -0.1945
+   6 -> -0.3597
+   7 -> -0.5399
+   8 -> -0.7214
+   9 -> -0.8859
+Choose your card: 2
+Bot plays: 3
+
+Round 2
+Prize: 9 Remaining prizes: [2, 3, 4, 5, 6, 7, 8]
+Current diff: -1
+Your hand: [1, 3, 4, 5, 6, 7, 8, 9]
+Bot hand: [1, 2, 4, 5, 6, 7, 8, 9]
+NE probs (you): {1:0.032, 3:0.045, 4:0.066, 5:0.091, 6:0.082, 9:0.685}
+NE probs (bot): {1:0.013, 2:0.058, 4:0.057, 5:0.093, 6:0.076, 9:0.703}
+EV by action vs bot mix:
+   1 -> -0.0587 <==
+   3 -> -0.0587 <==
+   4 -> -0.0587 <==
+   5 -> -0.0587 <==
+   6 -> -0.0587 <==
+   7 -> -0.1778
+   8 -> -0.4109
+   9 -> -0.0587 <==
+Choose your card: 1
+Bot plays: 6
+
+Round 3
+Prize: 7 Remaining prizes: [2, 3, 4, 5, 6, 8]
+Current diff: -10
+Your hand: [3, 4, 5, 6, 7, 8, 9]
+Bot hand: [1, 2, 4, 5, 7, 8, 9]
+NE probs (you): {3:0.220, 5:0.098, 6:0.192, 8:0.224, 9:0.265}
+NE probs (bot): {4:0.098, 5:0.060, 7:0.183, 8:0.131, 9:0.527}
+EV by action vs bot mix:
+   3 -> -0.6775 <==
+   4 -> -0.6855
+   5 -> -0.6775 <==
+   6 -> -0.6775 <==
+   7 -> -0.6886
+   8 -> -0.6775 <==
+   9 -> -0.6775 <==
+Choose your card: 5
+Bot plays: 9
+
+Round 4
+Prize: 2 Remaining prizes: [3, 4, 5, 6, 8]
+Current diff: -17
+Your hand: [3, 4, 6, 7, 8, 9]
+Bot hand: [1, 2, 4, 5, 7, 8]
+NE probs (you): {3:0.399, 4:0.172, 6:0.429}
+NE probs (bot): {1:0.392, 4:0.098, 5:0.511}
+EV by action vs bot mix:
+   3 -> -0.5875 <==
+   4 -> -0.5875 <==
+   6 -> -0.5875 <==
+   7 -> -0.6461
+   8 -> -0.8665
+   9 -> -1.0000
+Choose your card: 3
+Bot plays: 5
+
+Round 5
+Prize: 6 Remaining prizes: [3, 4, 5, 8]
+Current diff: -19
+Your hand: [4, 6, 7, 8, 9]
+Bot hand: [1, 2, 4, 7, 8]
+NE probs (you): {4:0.117, 7:0.502, 8:0.176, 9:0.206}
+NE probs (bot): {1:0.413, 4:0.031, 7:0.297, 8:0.259}
+EV by action vs bot mix:
+   4 -> -0.7157 <==
+   6 -> -0.7864
+   7 -> -0.7157 <==
+   8 -> -0.7157 <==
+   9 -> -0.7157 <==
+Choose your card: 8
+Bot plays: 8
+
+Round 6
+Prize: 3 Remaining prizes: [4, 5, 8]
+Current diff: -19
+Your hand: [4, 6, 7, 9]
+Bot hand: [1, 2, 4, 7]
+NE probs (you): {4:0.250, 6:0.500, 9:0.250}
+NE probs (bot): {1:0.500, 4:0.250, 7:0.250}
+EV by action vs bot mix:
+   4 -> -0.6667 <==
+   6 -> -0.6667 <==
+   7 -> -0.6667 <==
+   9 -> -0.6667 <==
+Choose your card: 4
+Bot plays: 1
+
+Round 7
+Prize: 4 Remaining prizes: [5, 8]
+Current diff: -16
+Your hand: [6, 7, 9]
+Bot hand: [2, 4, 7]
+NE probs (you): {6:0.667, 9:0.333}
+NE probs (bot): {2:0.667, 7:0.333}
+EV by action vs bot mix:
+   6 -> -0.3333 <==
+   7 -> -0.3333 <==
+   9 -> -0.3333 <==
+Choose your card: 6 
+Bot plays: 2
+
+Round 8
+Prize: 5 Remaining prizes: [8]
+Current diff: -12
+Your hand: [7, 9]
+Bot hand: [4, 7]
+NE probs (you): {7:0.500, 9:0.500}
+NE probs (bot): {4:0.500, 7:0.500}
+EV by action vs bot mix:
+   7 -> +0.0000 <==
+   9 -> +0.0000 <==
+Choose your card: 9
+Bot plays: 7
+
+Round 9
+Prize: 8 Remaining prizes: []
+Current diff: -7
+Your hand: [7]
+Bot hand: [4]
+NE probs (you): {7:1.000}
+NE probs (bot): {4:1.000}
+EV by action vs bot mix:
+   7 -> +1.0000 <==
+Choose your card: 7
+Bot plays: 4
+
+Final diff: 1
+You win!
