@@ -2,21 +2,20 @@ import argparse
 import os
 import sys
 import random
+from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 
-REPORTS_DIR = os.path.dirname(__file__)
-if REPORTS_DIR not in sys.path:
-    sys.path.insert(0, REPORTS_DIR)
+ROOT = Path(__file__).resolve().parents[1]
+AI_DIR = str(ROOT / "ai")
+REPORTS_DIR = str(ROOT / "reports")
+for path in (AI_DIR, REPORTS_DIR):
+    if path not in sys.path:
+        sys.path.insert(0, path)
 
 from common import State, build_matrix, cmp, list_cards, load_evc, remove_card
 from strategies import ActionFn, build_strategy, sample_action, strategy_choices, strategy_label, strategy_requires_cache
-
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-PYTHON_DIR = os.path.join(ROOT, "python")
-if PYTHON_DIR not in sys.path:
-    sys.path.insert(0, PYTHON_DIR)
 
 from linprog import findBestStrategy
 

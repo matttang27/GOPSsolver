@@ -1,5 +1,13 @@
 import random
+import sys
+from pathlib import Path
 from typing import Callable, Dict, List, Optional
+
+ROOT = Path(__file__).resolve().parents[1]
+REPORTS_DIR = ROOT / "reports"
+reports_path = str(REPORTS_DIR)
+if reports_path not in sys.path:
+    sys.path.insert(0, reports_path)
 
 import numpy as np
 

@@ -9,9 +9,11 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
-REPORTS_DIR = Path(__file__).resolve().parent
-if str(REPORTS_DIR) not in sys.path:
-    sys.path.insert(0, str(REPORTS_DIR))
+ROOT = Path(__file__).resolve().parents[1]
+REPORTS_DIR = ROOT / "reports"
+reports_path = str(REPORTS_DIR)
+if reports_path not in sys.path:
+    sys.path.insert(0, reports_path)
 
 from common import (
     build_matrix,
@@ -366,7 +368,7 @@ def main() -> None:
             trigger_rerun()
 
     if not cache_path:
-        st.error("No cache file found. Add a .evc file under cpp-solver/reports.")
+        st.error("No cache file found. Add a .evc file under reports/.")
         return
 
     with st.spinner("Loading cache..."):

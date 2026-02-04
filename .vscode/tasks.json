@@ -4,7 +4,7 @@
     {
       "id": "runArgs",
       "type": "promptString",
-      "description": "Arguments for cpp_solver.exe",
+      "description": "Arguments for solver executable",
       "default": ""
     }
   ],
@@ -13,7 +13,7 @@
       "label": "solver build",
       "type": "shell",
       "options": {
-        "cwd": "${workspaceFolder}\\cpp-solver"
+        "cwd": "${workspaceFolder}\\solver"
       },
       "command": "cmd",
       "args": [
@@ -26,10 +26,13 @@
       "label": "solver run",
       "type": "shell",
       "options": {
-        "cwd": "${workspaceFolder}\\cpp-solver"
+        "cwd": "${workspaceFolder}\\solver"
       },
-      "command": ".\\build\\vcpkg\\Release\\cpp_solver.exe",
-      "args": ["${input:runArgs}"],
+      "command": "cmd",
+      "args": [
+        "/c",
+        ".\\build\\vcpkg\\Release\\cpp_solver.exe ${input:runArgs}"
+      ],
       "problemMatcher": []
     }
   ]

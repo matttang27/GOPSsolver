@@ -1,8 +1,15 @@
 from __future__ import annotations
 
 from typing import List, Tuple
+import sys
+from pathlib import Path
 
-from common import canonicalize, cmp, guaranteed, list_cards, load_evc, popcount, remove_card
+ROOT = Path(__file__).resolve().parents[1]
+root_path = str(ROOT)
+if root_path not in sys.path:
+    sys.path.insert(0, root_path)
+
+from ai.common import canonicalize, cmp, guaranteed, list_cards, load_evc, popcount, remove_card
 
 N = 8
 CACHE_PATH = "full8.evc"
