@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import random
-from typing import Dict
+from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 import streamlit as st
@@ -14,50 +14,133 @@ from evc_viewer_app.session import trigger_rerun
 from evc_viewer_app.ui import render_state_summary
 
 
+def _init_play_ui_state() -> None:
+    if "play_history" not in st.session_state:
+        st.session_state.play_history = []
+    if "play_reveal_prizes" not in st.session_state:
+        st.session_state.play_reveal_prizes = False
+    # Default opponent: "evc-ne" (best-looking baseline bot for this app).
+    if "play_bot_strategy" not in st.session_state:
+        st.session_state.play_bot_strategy = "evc-ne"
+
+
+def _render_card_face(
+    value: object,
+    *,
+    title: Optional[str] = None,
+    subtitle: Optional[str] = None,
+    accent: str = "#0f172a",
+) -> None:
+    title_html = f"<div style='font-size:12px; opacity:.75; margin-bottom:6px'>{title}</div>" if title else ""
+    sub_html = f"<div style='font-size:12px; opacity:.75; margin-top:6px'>{subtitle}</div>" if subtitle else ""
+    st.markdown(
+        f"""
+        <div style="
+            width: 100%;
+            border: 1px solid rgba(15, 23, 42, 0.20);
+            border-radius: 14px;
+            padding: 14px 14px;
+            background: linear-gradient(180deg, rgba(255,255,255,.98), rgba(248,250,252,.98));
+            box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
+        ">
+          {title_html}
+          <div style="
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            height: 96px;
+            font-size: 40px;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            color: {accent};
+          ">{value}</div>
+          {sub_html}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _hand_button_grid(
+    *,
+    label: str,
+    cards: List[int],
+    key_prefix: str,
+    per_row: int = 10,
+) -> Optional[int]:
+    st.markdown(f"**{label}**")
+    if not cards:
+        st.caption("No cards.")
+        return None
+    per_row = max(1, min(per_row, len(cards)))
+    clicked: Optional[int] = None
+    for row_start in range(0, len(cards), per_row):
+        row = cards[row_start : row_start + per_row]
+        cols = st.columns(len(row), gap="small")
+        for col, card in zip(cols, row):
+            with col:
+                if st.button(
+                    str(card),
+                    key=f"{key_prefix}_{card}",
+                    type="secondary",
+                    use_container_width=True,
+                ):
+                    clicked = card
+    return clicked
+
+
 def render_play_tabs(cache: Dict[int, float], max_card: int) -> None:
+    _init_play_ui_state()
     st.subheader("Play / Simulate")
     bot_choices = strategy_choices()
     play_tab, auto_tab = st.tabs(["Play vs Bot", "Auto-play"])
 
     with play_tab:
-        st.caption("Play a full game with a shuffled prize order.")
-        play_n = st.number_input(
-            "Cards (N)",
-            min_value=1,
-            max_value=max_card,
-            value=max_card,
-            step=1,
-            key="play_n",
-        )
-        play_seed = st.number_input(
-            "Game seed (0=random)",
-            min_value=0,
-            max_value=2**31 - 1,
-            value=0,
-            step=1,
-            key="play_seed",
-        )
-        bot_strategy = st.selectbox("Bot strategy", bot_choices, key="play_bot_strategy")
-        bot_seed = st.number_input(
-            "Bot seed (-1=use game RNG, 0=random)",
-            min_value=-1,
-            max_value=2**31 - 1,
-            value=-1,
-            step=1,
-            key="play_bot_seed",
-        )
-        start_col, end_col = st.columns(2)
-        with start_col:
-            if st.button("Start new game", key="play_start"):
-                start_play_game(int(play_n), int(play_seed))
-                st.session_state.play_bot_rng = random.Random(int(bot_seed)) if int(bot_seed) > 0 else None
-                st.session_state.play_bot_rng_seed = int(bot_seed)
-        with end_col:
-            if st.button("End game", key="play_end"):
-                st.session_state.play_active = False
-                st.session_state.play_over = False
-                st.session_state.play_last_choices = None
-                st.session_state.play_final_diff = None
+        st.caption("Play a full game. Prize order is hidden unless you reveal it.")
+        with st.container(border=True):
+            left, right = st.columns([2, 1], vertical_alignment="bottom")
+            with left:
+                c1, c2 = st.columns(2)
+                with c1:
+                    play_n = st.number_input(
+                        "Cards (N)",
+                        min_value=1,
+                        max_value=max_card,
+                        value=int(st.session_state.get("play_n", max_card)),
+                        step=1,
+                        key="play_n",
+                    )
+                with c2:
+                    play_seed = st.number_input(
+                        "Game seed (0=random)",
+                        min_value=0,
+                        max_value=2**31 - 1,
+                        value=int(st.session_state.get("play_seed", 0)),
+                        step=1,
+                        key="play_seed",
+                    )
+                bot_strategy = st.selectbox("Bot strategy", bot_choices, key="play_bot_strategy")
+                bot_seed = st.number_input(
+                    "Bot seed (-1=use game RNG, 0=random)",
+                    min_value=-1,
+                    max_value=2**31 - 1,
+                    value=int(st.session_state.get("play_bot_seed", -1)),
+                    step=1,
+                    key="play_bot_seed",
+                )
+            with right:
+                st.toggle("Reveal prize order", value=bool(st.session_state.play_reveal_prizes), key="play_reveal_prizes")
+                if st.button("Start new game", key="play_start", type="primary", use_container_width=True):
+                    start_play_game(int(play_n), int(play_seed))
+                    st.session_state.play_bot_rng = random.Random(int(bot_seed)) if int(bot_seed) > 0 else None
+                    st.session_state.play_bot_rng_seed = int(bot_seed)
+                    st.session_state.play_history = []
+                    trigger_rerun()
+                if st.button("End game", key="play_end", use_container_width=True):
+                    st.session_state.play_active = False
+                    st.session_state.play_over = False
+                    st.session_state.play_last_choices = None
+                    st.session_state.play_final_diff = None
 
         if st.session_state.get("play_active"):
             cardsA = list_cards(int(st.session_state.play_A_mask))
@@ -65,26 +148,57 @@ def render_play_tabs(cache: Dict[int, float], max_card: int) -> None:
             cardsP = list_cards(int(st.session_state.play_P_mask))
             curP = int(st.session_state.play_curP)
             diff = int(st.session_state.play_diff)
-            render_state_summary(cardsA, cardsB, cardsP, diff, curP)
-            if st.session_state.get("play_last_choices"):
-                choiceA, choiceB = st.session_state.play_last_choices
-                st.caption(f"Last round: you played {choiceA}, bot played {choiceB}.")
-            if st.session_state.get("play_over"):
-                final_diff = st.session_state.get("play_final_diff", diff)
-                if final_diff > 0:
-                    result = "You win!"
-                elif final_diff < 0:
-                    result = "Bot wins!"
+
+            # Tabletop layout: Score card, Prize card, Last round card.
+            top_l, top_c, top_r = st.columns([2, 2, 2], vertical_alignment="top")
+            score_accent = "#b91c1c" if diff < 0 else ("#0f766e" if diff > 0 else "#0f172a")
+            with top_l:
+                _render_card_face(
+                    f"{diff:+d}",
+                    title="Score (A - B)",
+                    subtitle=f"Cards left: {len(cardsA)}",
+                    accent=score_accent,
+                )
+            with top_c:
+                _render_card_face(curP, title="Current Prize", subtitle=f"Remaining prizes: {len(cardsP)}", accent="#0f766e")
+            with top_r:
+                last = (st.session_state.get("play_history") or [])[-1] if (st.session_state.get("play_history") or []) else None
+                if last:
+                    _render_card_face(
+                        f"{last['you']} vs {last['bot']}",
+                        title="Last Round",
+                        subtitle=f"Δ {int(last['delta']):+d}  |  Total {int(last['diff']):+d}",
+                        accent="#0f172a",
+                    )
                 else:
-                    result = "Draw."
-                st.success(f"Game over. Final diff: {int(final_diff):+d}. {result}")
+                    _render_card_face("—", title="Last Round", subtitle="No rounds played yet.", accent="#0f172a")
+
+            if st.session_state.get("play_reveal_prizes") and st.session_state.get("play_prizes"):
+                prizes = list(st.session_state.play_prizes)
+                idx = int(st.session_state.get("play_index", 0))
+                upcoming = prizes[idx + 1 :]
+                with st.expander("Prize order (revealed)", expanded=False):
+                    st.write(f"Current index: `{idx}`")
+                    st.write("Upcoming prizes:", upcoming if upcoming else "None")
+
+            if st.session_state.get("play_over"):
+                # No extra details needed on game over; the score card is enough.
+                pass
             elif not cardsA or not cardsB:
                 st.info("Start a new game to play.")
             else:
-                if "play_choice_a" in st.session_state and st.session_state.play_choice_a not in cardsA:
-                    st.session_state.play_choice_a = cardsA[0]
-                choiceA = st.selectbox("Your card", cardsA, key="play_choice_a")
-                if st.button("Play round", key="play_round"):
+                with st.container(border=True):
+                    st.markdown("**Your move**")
+                    clicked_card = _hand_button_grid(
+                        label="Select a card to play",
+                        cards=cardsA,
+                        key_prefix="play_hand",
+                        per_row=10,
+                    )
+                    st.caption("Click a card to play it immediately.")
+
+                if clicked_card is not None:
+                    choiceA = int(clicked_card)
                     bot_seed_val = int(st.session_state.play_bot_seed)
                     if bot_seed_val > 0:
                         if (
@@ -97,20 +211,29 @@ def render_play_tabs(cache: Dict[int, float], max_card: int) -> None:
                     else:
                         bot_rng = resolve_rng(bot_seed_val, st.session_state.get("play_rng"))
 
-                    bot_strat = build_strategy(bot_strategy, cache=cache, rng=bot_rng)
+                    bot_strat = build_strategy(st.session_state.play_bot_strategy, cache=cache, rng=bot_rng)
                     A_mask = int(st.session_state.play_A_mask)
                     B_mask = int(st.session_state.play_B_mask)
                     P_mask = int(st.session_state.play_P_mask)
-                    state = State(A=A_mask, B=B_mask, P=P_mask, diff=diff, curP=curP)
                     state_for_b = State(A=B_mask, B=A_mask, P=P_mask, diff=-diff, curP=curP)
-                    choiceB = bot_strat(state_for_b)
+                    choiceB = int(bot_strat(state_for_b))
                     if choiceB not in cardsB:
                         st.error(f"Bot strategy returned invalid card: {choiceB}")
                     else:
-                        new_diff = diff + cmp(choiceA, choiceB) * curP
+                        delta = int(cmp(choiceA, choiceB) * curP)
+                        new_diff = int(diff + delta)
                         new_A = remove_card(A_mask, choiceA)
                         new_B = remove_card(B_mask, choiceB)
                         st.session_state.play_last_choices = (choiceA, choiceB)
+                        st.session_state.play_history.append(
+                            {
+                                "prize": int(curP),
+                                "you": int(choiceA),
+                                "bot": int(choiceB),
+                                "delta": int(delta),
+                                "diff": int(new_diff),
+                            }
+                        )
                         if P_mask == 0:
                             st.session_state.play_A_mask = new_A
                             st.session_state.play_B_mask = new_B
@@ -129,54 +252,79 @@ def render_play_tabs(cache: Dict[int, float], max_card: int) -> None:
                             st.session_state.play_curP = int(next_prize)
                             st.session_state.play_diff = new_diff
                         trigger_rerun()
+
+            hist = st.session_state.get("play_history") or []
+            if hist:
+                with st.expander("Round log", expanded=False):
+                    df_hist = pd.DataFrame(hist)
+                    st.dataframe(df_hist, width="stretch", hide_index=True)
         else:
             st.info("Start a new game to play against a strategy.")
 
     with auto_tab:
         st.caption("Simulate multiple games between two strategies.")
-        auto_n = st.number_input(
-            "Cards (N)",
-            min_value=1,
-            max_value=max_card,
-            value=max_card,
-            step=1,
-            key="auto_n",
-        )
-        auto_seed = st.number_input(
-            "Series seed (0=random)",
-            min_value=0,
-            max_value=2**31 - 1,
-            value=0,
-            step=1,
-            key="auto_seed",
-        )
-        auto_count = st.number_input(
-            "Games",
-            min_value=1,
-            value=50,
-            step=1,
-            key="auto_count",
-        )
-        auto_sa = st.selectbox("Strategy A", bot_choices, key="auto_sa")
-        auto_sb = st.selectbox("Strategy B", bot_choices, key="auto_sb")
-        auto_sa_seed = st.number_input(
-            "Strategy A seed (-1=use game RNG, 0=random)",
-            min_value=-1,
-            max_value=2**31 - 1,
-            value=-1,
-            step=1,
-            key="auto_sa_seed",
-        )
-        auto_sb_seed = st.number_input(
-            "Strategy B seed (-1=use game RNG, 0=random)",
-            min_value=-1,
-            max_value=2**31 - 1,
-            value=-1,
-            step=1,
-            key="auto_sb_seed",
-        )
-        show_diffs = st.toggle("Show per-game diffs", value=False, key="auto_show_diffs")
-        if st.button("Run auto-play", key="auto_run"):
+        with st.container(border=True):
+            st.markdown("**Setup**")
+            r1c1, r1c2, r1c3, r1c4 = st.columns(4, vertical_alignment="bottom")
+            with r1c1:
+                auto_n = st.number_input(
+                    "Cards (N)",
+                    min_value=1,
+                    max_value=max_card,
+                    value=int(st.session_state.get("auto_n", max_card)),
+                    step=1,
+                    key="auto_n",
+                )
+            with r1c2:
+                auto_count = st.number_input(
+                    "Games",
+                    min_value=1,
+                    value=int(st.session_state.get("auto_count", 50)),
+                    step=1,
+                    key="auto_count",
+                )
+            with r1c3:
+                auto_seed = st.number_input(
+                    "Series seed (0=random)",
+                    min_value=0,
+                    max_value=2**31 - 1,
+                    value=int(st.session_state.get("auto_seed", 0)),
+                    step=1,
+                    key="auto_seed",
+                )
+            with r1c4:
+                show_diffs = st.toggle("Show per-game diffs", value=False, key="auto_show_diffs")
+
+            st.markdown("**Matchup**")
+            r2c1, r2c2, r2c3, r2c4 = st.columns(4, vertical_alignment="bottom")
+            with r2c1:
+                auto_sa = st.selectbox("Strategy A", bot_choices, key="auto_sa")
+            with r2c2:
+                auto_sa_seed = st.number_input(
+                    "Strategy A seed",
+                    min_value=-1,
+                    max_value=2**31 - 1,
+                    value=int(st.session_state.get("auto_sa_seed", -1)),
+                    step=1,
+                    key="auto_sa_seed",
+                    help="-1=use game RNG, 0=random",
+                )
+            with r2c3:
+                auto_sb = st.selectbox("Strategy B", bot_choices, key="auto_sb")
+            with r2c4:
+                auto_sb_seed = st.number_input(
+                    "Strategy B seed",
+                    min_value=-1,
+                    max_value=2**31 - 1,
+                    value=int(st.session_state.get("auto_sb_seed", -1)),
+                    step=1,
+                    key="auto_sb_seed",
+                    help="-1=use game RNG, 0=random",
+                )
+
+            run_clicked = st.button("Run auto-play", key="auto_run", type="primary", use_container_width=True)
+
+        if run_clicked:
             st.session_state.auto_results = run_auto_play_series(
                 int(auto_n),
                 int(auto_seed),
@@ -189,14 +337,15 @@ def render_play_tabs(cache: Dict[int, float], max_card: int) -> None:
             )
         results = st.session_state.get("auto_results")
         if results:
-            st.write(f"Strategy A: {results['label_a']}")
-            st.write(f"Strategy B: {results['label_b']}")
-            st.write(f"A wins: {results['wins_a']} ({results['wins_a'] / results['total_games'] * 100:.1f}%)")
-            st.write(f"B wins: {results['wins_b']} ({results['wins_b'] / results['total_games'] * 100:.1f}%)")
-            st.write(f"Draws: {results['draws']} ({results['draws'] / results['total_games'] * 100:.1f}%)")
-            st.write(f"Average point diff (A-B): {results['avg_diff']:+.3f}")
-            st.write(f"Average EV (A=+1, B=-1): {results['avg_ev']:+.3f}")
+            with st.container(border=True):
+                st.markdown("**Results**")
+                st.write(f"Strategy A: `{results['label_a']}`")
+                st.write(f"Strategy B: `{results['label_b']}`")
+                st.write(f"A wins: `{results['wins_a']}` ({results['wins_a'] / results['total_games'] * 100:.1f}%)")
+                st.write(f"B wins: `{results['wins_b']}` ({results['wins_b'] / results['total_games'] * 100:.1f}%)")
+                st.write(f"Draws: `{results['draws']}` ({results['draws'] / results['total_games'] * 100:.1f}%)")
+                st.write(f"Average point diff (A-B): `{results['avg_diff']:+.3f}`")
+                st.write(f"Average EV (A=+1, B=-1): `{results['avg_ev']:+.3f}`")
             if show_diffs:
                 df_diffs = pd.DataFrame({"diff": results["diffs"]})
                 st.dataframe(df_diffs, width="stretch", hide_index=True)
-
