@@ -21,16 +21,16 @@ def render_state_summary(
     *,
     key: Optional[int] = None,
 ) -> None:
-    data = {
-        "A": format_cards(cardsA),
-        "B": format_cards(cardsB),
-        "P": format_cards(cardsP),
-        "diff": diff,
-        "curP": curP,
-    }
+    parts = [
+        f"**A** {format_cards(cardsA)}",
+        f"**B** {format_cards(cardsB)}",
+        f"**P** {format_cards(cardsP)}",
+        f"**diff** `{diff}`",
+        f"**curP** `{curP}`",
+    ]
     if key is not None:
-        data["key"] = key
-    st.write(data)
+        parts.append(f"**key** `{key}`")
+    st.markdown(" · ".join(parts))
 
 
 def display_value(ev: float, display_percent: bool) -> float:
@@ -58,9 +58,9 @@ def render_copy_button(text: str, label: str) -> None:
     safe_label = json.dumps(label)
     components.html(
         f"""
-        <div style="display:flex;justify-content:flex-end;align-items:center;height:28px;">
+        <div style="display:flex;justify-content:flex-end;align-items:center;height:34px;">
           <button id="{block_id}_btn" type="button" title={safe_label}
-            style="border:1px solid #ccc;border-radius:6px;padding:2px 6px;background:#fff;cursor:pointer;">
+            style="border:1px solid #ccc;border-radius:6px;padding:4px 8px;background:#fff;cursor:pointer;line-height:1;box-sizing:border-box;">
             &#128203;
           </button>
           <span id="{block_id}_status" style="font-size:12px;color:#666;margin-left:6px;"></span>
@@ -84,7 +84,7 @@ def render_copy_button(text: str, label: str) -> None:
           }})();
         </script>
         """,
-        height=30,
+        height=36,
     )
 
 

@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>evc_grid</title>
+    <style>
+      :root {
+        --line: rgba(0,0,0,0.18);
+        --text: #111;
+        --header-bg: rgba(0,0,0,0.03);
+      }
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      }
+      table.evc-grid {
+        border-collapse: collapse;
+        width: 100%;
+        table-layout: fixed;
+        font-size: 12px;
+      }
+      table.evc-grid th, table.evc-grid td {
+        border: 1px solid var(--line);
+        padding: 0;
+        text-align: center;
+        vertical-align: middle;
+        height: 34px;
+        overflow: hidden;
+      }
+      table.evc-grid th {
+        background: var(--header-bg);
+        font-weight: 600;
+      }
+      button.cell {
+        width: 100%;
+        height: 100%;
+        border: none;
+        background: transparent;
+        margin: 0;
+        padding: 0;
+        cursor: pointer;
+        color: var(--text);
+        border-radius: 0;
+      }
+      button.cell:hover { filter: brightness(0.95); }
+      button.cell:disabled {
+        cursor: default;
+        opacity: 0.7;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      const API_VERSION = 1;
+
+      function postToStreamlit(type, data) {
+        window.parent.postMessage({ isStreamlitMessage: true, type, ...data }, "*");
+      }
+
+      function setFrameHeight(h) {
+        postToStreamlit("streamlit:setFrameHeight", { height: h });
+      }
+
+      function setValue(v) {
+        postToStreamlit("streamlit:setComponentValue", { value: v, dataType: "json" });
+      }
+
+      function clamp(x, lo, hi) { return Math.max(lo, Math.min(hi, x)); }
+
+      function cellBg(ev) {
+        ev = clamp(ev, -1, 1);
+        const m = Math.abs(ev);
+        let r, g, b;
+        if (ev >= 0) {
+          r = Math.round(255 * (1 - m));
+          g = 255;
+          b = Math.round(255 * (1 - m));
+        } else {
+          r = 255;
+          g = Math.round(255 * (1 - m));
+          b = Math.round(255 * (1 - m));
+        }
+        return `rgb(${r},${g},${b})`;
+      }
+
+      function render(args, theme, disabled) {
+        const root = document.getElementById("root");
+
+        const base = (theme && theme.base) ? theme.base : "light";
+        if (base === "dark") {
+          document.documentElement.style.setProperty("--line", "rgba(255,255,255,0.25)");
+          document.documentElement.style.setProperty("--text", "#eaeaea");
+          document.documentElement.style.setProperty("--header-bg", "rgba(255,255,255,0.06)");
+        } else {
+          document.documentElement.style.setProperty("--line", "rgba(0,0,0,0.18)");
+          document.documentElement.style.setProperty("--text", "#111");
+          document.documentElement.style.setProperty("--header-bg", "rgba(0,0,0,0.03)");
+        }
+
+        const cardsA = args.cardsA || [];
+        const cardsB = args.cardsB || [];
+        const evs = args.evs || [];
+        const labels = args.labels || [];
+        const supportA = new Set(args.supportA || []);
+        const supportB = new Set(args.supportB || []);
+
+        const table = document.createElement("table");
+        table.className = "evc-grid";
+
+        const thead = document.createElement("thead");
+        const hr = document.createElement("tr");
+        const th0 = document.createElement("th");
+        th0.textContent = "A \\\\ B";
+        hr.appendChild(th0);
+        for (const b of cardsB) {
+          const th = document.createElement("th");
+          th.textContent = String(b);
+          hr.appendChild(th);
+        }
+        thead.appendChild(hr);
+        table.appendChild(thead);
+
+        const tbody = document.createElement("tbody");
+        for (let i = 0; i < cardsA.length; i++) {
+          const a = cardsA[i];
+          const tr = document.createElement("tr");
+          const th = document.createElement("th");
+          th.textContent = String(a);
+          tr.appendChild(th);
+
+          for (let j = 0; j < cardsB.length; j++) {
+            const b = cardsB[j];
+            const td = document.createElement("td");
+            const ev = (evs[i] && typeof evs[i][j] === "number") ? evs[i][j] : 0;
+            td.style.background = cellBg(ev);
+
+            const btn = document.createElement("button");
+            btn.className = "cell";
+            btn.type = "button";
+            btn.disabled = !!disabled;
+            btn.textContent = (labels[i] && labels[i][j]) ? String(labels[i][j]) : "";
+
+            const isMutual = supportA.has(a) && supportB.has(b);
+            if (isMutual) {
+              btn.style.outline = base === "dark" ? "2px solid rgba(255,255,255,0.60)" : "2px solid rgba(0,0,0,0.45)";
+              btn.style.outlineOffset = "-2px";
+            }
+
+            btn.addEventListener("click", () => {
+              if (disabled) return;
+              window.__evcSeq = (window.__evcSeq || 0) + 1;
+              setValue({ a, b, seq: window.__evcSeq });
+            });
+
+            td.appendChild(btn);
+            tr.appendChild(td);
+          }
+          tbody.appendChild(tr);
+        }
+        table.appendChild(tbody);
+        // Swap content atomically to avoid flicker during rerenders.
+        root.replaceChildren(table);
+
+        const h = 40 * (cardsA.length + 1) + 10;
+        setFrameHeight(h);
+      }
+
+      window.addEventListener("message", (event) => {
+        const msg = event.data;
+        if (!msg || msg.type !== "streamlit:render") return;
+        const args = msg.args || {};
+        // Streamlit may send a top-level "disabled" flag, but our Python side also passes
+        // a "disabled" arg; support both.
+        const disabled = !!msg.disabled || !!args.disabled;
+        render(args, msg.theme || {}, disabled);
+      });
+
+      postToStreamlit("streamlit:componentReady", { apiVersion: API_VERSION });
+      setFrameHeight(120);
+    </script>
+  </body>
+</html>
