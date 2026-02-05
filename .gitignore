@@ -2,4 +2,4 @@ __pycache__/
 *.py[cod]
 third_party/
 build/
-*.evc
+full9.evc
