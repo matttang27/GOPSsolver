@@ -1,0 +1,38 @@
+Claude Analysis Directory - Cleaned Up
+======================================
+
+This folder contains experimental analysis and optimization attempts for the GOPS solver.
+
+MAIN FILES:
+-----------
+1. consolidated_tests.py - Run this for all compression strategy tests and final report
+2. profile_test.py - Profile the main solver to identify bottlenecks  
+3. benchmark_lp.py - Benchmark LP solver implementations
+4. analyze_states.py - Basic state space analysis by n
+
+EXPERIMENTAL SOLVERS (not faster than main):
+-------------------------------------------
+- solver_fast.py - Attempt at reduced cache overhead
+- solver_v2.py - Simplified solver with inline saddle point
+- solver_v3.py - Attempt at restructuring prize averaging
+- analytical_solver.py - Analytical 2x2 game solver (for small games)
+- check_lp.py - Verify LP solver correctness
+
+KEY FINDINGS (from consolidated_tests.py):
+-----------------------------------------
+VALID compressions:
+  - GCD normalization: ~1.02x (minimal)
+  - Scale invariance: confirmed
+  - Outcome mapping: ~1.4x overall (3-4x at shallow, 1x at deep depths)
+
+INVALID compressions:
+  - Sorted prizes without prizeIndex: prizeIndex matters!
+  - Compressed mapping (win/tie/loss counts): loses info
+
+BOTTOM LINE:
+The ~1.4x from outcome mapping is the best valid compression found.
+For n=13, this doesn't change feasibility.
+The exponential growth is fundamental to the game structure.
+
+To run all tests: py consolidated_tests.py
+
