@@ -1,10 +1,16 @@
 import json
 import os
 import struct
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
-from typing import Dict, List, Tuple
+from typing import List, Tuple
+
+import numpy as np
 
 EPS = 1e-12
+_MAGIC = b"GOPSEV1\0"
+_HEADER_STRUCT = struct.Struct("<IIQ")
+_RECORD_DTYPE = np.dtype([("key", "<u8"), ("ev", "<f8")])
 
 
 @dataclass(frozen=True)
@@ -16,21 +22,89 @@ class State:
     curP: int
 
 
-def load_evc(path: str) -> Dict[int, float]:
+class EVCCache(Mapping[int, float]):
+    """Read-only sorted cache with binary-search lookups."""
+
+    __slots__ = ("_keys", "_values", "_memo", "_memo_limit")
+
+    def __init__(self, keys: np.ndarray, values: np.ndarray, memo_limit: int = 250_000) -> None:
+        self._keys = np.ascontiguousarray(keys, dtype=np.uint64)
+        self._values = np.ascontiguousarray(values, dtype=np.float64)
+        self._memo: dict[int, float] = {}
+        self._memo_limit = int(max(memo_limit, 0))
+
+    def __len__(self) -> int:
+        return int(self._keys.size)
+
+    def __iter__(self) -> Iterator[int]:
+        return (int(key) for key in self._keys)
+
+    def __getitem__(self, key: int) -> float:
+        key_int = int(key)
+        try:
+            return self._memo[key_int]
+        except KeyError:
+            pass
+        idx = self._find_index(key_int)
+        if idx < 0:
+            raise KeyError(key)
+        value = float(self._values[idx])
+        if len(self._memo) < self._memo_limit:
+            self._memo[key_int] = value
+        return value
+
+    def _find_index(self, key: int) -> int:
+        key_int = int(key)
+        if key_int < 0:
+            return -1
+        try:
+            key_u64 = np.uint64(key_int)
+        except OverflowError:
+            return -1
+        idx = int(np.searchsorted(self._keys, key_u64, side="left"))
+        if idx < len(self._keys) and self._keys[idx] == key_u64:
+            return idx
+        return -1
+
+    def __contains__(self, key: object) -> bool:
+        if not isinstance(key, (int, np.integer)):
+            return False
+        key_int = int(key)
+        if key_int in self._memo:
+            return True
+        return self._find_index(key_int) >= 0
+
+
+def load_evc(path: str) -> Mapping[int, float]:
     with open(path, "rb") as f:
         magic = f.read(8)
-        if magic != b"GOPSEV1\0":
+        if magic != _MAGIC:
             raise ValueError("bad magic")
-        _version, _reserved = struct.unpack("<II", f.read(8))
-        count = struct.unpack("<Q", f.read(8))[0]
-        data: Dict[int, float] = {}
-        for _ in range(count):
-            key, ev = struct.unpack("<Qd", f.read(16))
-            data[key] = ev
-    return data
+        _version, _reserved, count = _HEADER_STRUCT.unpack(f.read(_HEADER_STRUCT.size))
+        records = np.fromfile(f, dtype=_RECORD_DTYPE, count=count)
+
+    if records.size != count:
+        raise ValueError(f"truncated cache: expected {count} records, found {records.size}")
+    if records.size == 0:
+        return {}
+
+    keys = records["key"]
+    values = records["ev"]
+    if keys.size > 1 and not bool(np.all(keys[:-1] < keys[1:])):
+        order = np.argsort(keys, kind="mergesort")
+        keys = keys[order]
+        values = values[order]
+        # Keep last value for duplicate keys (if any).
+        keep = np.empty(keys.size, dtype=bool)
+        keep[:-1] = keys[:-1] != keys[1:]
+        keep[-1] = True
+        keys = keys[keep]
+        values = values[keep]
+
+    return EVCCache(keys, values)
 
 
-def build_matrix(cache: Dict[int, float],
+def build_matrix(cache: Mapping[int, float],
                  A: int,
                  B: int,
                  P: int,
@@ -82,6 +156,7 @@ def load_meta(path: str):
 
 
 def decode_key(key: int) -> Tuple[int, int, int, int, int]:
+    key = int(key)
     A = key & 0xFFFF
     B = (key >> 16) & 0xFFFF
     P = (key >> 32) & 0xFFFF
@@ -123,20 +198,22 @@ def canonicalize_state(state: State) -> Tuple[int, float]:
     return canonicalize(state.A, state.B, state.P, state.diff, state.curP)
 
 
-def get_ev(cache: Dict[int, float], A: int, B: int, P: int, diff: int, curP: int) -> float:
+def get_ev(cache: Mapping[int, float], A: int, B: int, P: int, diff: int, curP: int) -> float:
     key, sign = canonicalize(A, B, P, diff, curP)
-    #print(key)
-    if key not in cache:
+    # Avoid double lookup for non-dict cache backends.
+    try:
+        ev = cache[key]
+    except KeyError:
         if (A == B and diff == 0):
             return 0.0
         if guaranteed(list_cards(A), list_cards(B), diff, list_cards(P)) != 0:
             return sign * cmp(diff, 0)
         
         raise KeyError(f"state not in cache: A={A} B={B} P={P} diff={diff} curP={curP}")
-    return sign * cache[key]
+    return sign * ev
 
 
-def get_ev_state(cache: Dict[int, float], state: State) -> float:
+def get_ev_state(cache: Mapping[int, float], state: State) -> float:
     return get_ev(cache, state.A, state.B, state.P, state.diff, state.curP)
 
 def list_to_mask(cards: List[int]) -> int:

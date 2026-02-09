@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Dict
+from collections.abc import Mapping
 
 import streamlit as st
 
@@ -14,7 +14,7 @@ from evc_viewer_app.sidebar import render_sidebar
 
 
 @st.cache_resource(show_spinner=False)
-def load_cache(path: str) -> Dict[int, float]:
+def load_cache(path: str) -> Mapping[int, float]:
     return load_evc(path)
 
 
