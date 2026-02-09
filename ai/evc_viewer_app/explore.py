@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import json
 import random
-from typing import Dict, List, Optional
+from collections.abc import Mapping
+from typing import List, Optional
 
 import numpy as np
 import pandas as pd
@@ -24,6 +25,7 @@ from evc_viewer_app.helpers import (
     sync_current_prize,
 )
 from evc_viewer_app.session import ensure_state_init, trigger_rerun
+from evc_viewer_app.state_types import ss
 from evc_viewer_app.ui import (
     build_strategy_table,
     display_value,
@@ -35,7 +37,7 @@ from evc_viewer_app.ui import (
 
 
 def render_explore_tab(
-    cache: Dict[int, float],
+    cache: Mapping[int, float],
     cache_path,
     display_percent: bool,
     mode: str,
@@ -44,6 +46,7 @@ def render_explore_tab(
 ) -> None:
     st.subheader("State Input")
     ensure_state_init(card_options, max_card)
+    S = ss()
 
     def _toggle_list_value(state_key: str, card: int) -> None:
         cur = st.session_state.get(state_key, [])
@@ -74,11 +77,10 @@ def render_explore_tab(
             row_cols = st.columns(per_row, gap="small")
             for col, card in zip(row_cols, row):
                 with col:
-                    is_selected = card in selected_set
                     if st.button(
                         str(card),
                         key=f"{state_key}_btn_{card}",
-                        type="primary" if is_selected else "secondary",
+                        type="primary" if card in selected_set else "secondary",
                         disabled=card in disabled,
                         use_container_width=True,
                         on_click=_toggle_list_value,
@@ -89,25 +91,30 @@ def render_explore_tab(
         # If on_click fired, Streamlit has already updated st.session_state[state_key] before this render.
         return sorted(int(x) for x in st.session_state.get(state_key, []))
 
-    def _current_prize_picker(*, options: List[int], cur: int) -> int:
+    def _set_current_prize(card: int) -> None:
+        st.session_state.curP = int(card)
+        sync_current_prize()
+
+    def _current_prize_picker(*, options: List[int]) -> int:
         st.markdown("**Current prize**")
         if not options:
             return 0
         per_row = max(1, min(8, len(options)))
-        new_cur = cur
+        cur = int(st.session_state.get("curP", options[0]))
         for row_start in range(0, len(options), per_row):
             row = options[row_start : row_start + per_row]
             row_cols = st.columns(per_row, gap="small")
             for col, card in zip(row_cols, row):
                 with col:
-                    if st.button(
+                    st.button(
                         str(card),
                         key=f"curP_btn_{card}",
                         type="primary" if card == cur else "secondary",
                         use_container_width=True,
-                    ):
-                        new_cur = card
-        return int(new_cur)
+                        on_click=_set_current_prize,
+                        args=(int(card),),
+                    )
+        return int(st.session_state.get("curP", cur))
 
     cardsA: List[int] = []
     cardsB: List[int] = []
@@ -124,20 +131,12 @@ def render_explore_tab(
                 state_key="cardsA",
             )
         with col2:
-            prev_cur = int(st.session_state.curP)
-            curP = _current_prize_picker(options=card_options, cur=prev_cur)
-            # Keep session_state + remaining prizes consistent when current prize changes.
-            if "curP_prev" not in st.session_state:
-                st.session_state.curP_prev = prev_cur
-            if curP != prev_cur:
-                st.session_state.curP = curP
-                sync_current_prize()
-                trigger_rerun()
+            curP = _current_prize_picker(options=card_options)
             cardsP = _toggle_button_grid(
                 title="Remaining prizes (exclude current)",
                 options=card_options,
                 state_key="cardsP",
-                disabled={int(st.session_state.curP)},
+                disabled={int(S.curP)},
             )
         with col1:
             cardsB = _toggle_button_grid(
@@ -149,52 +148,24 @@ def render_explore_tab(
             diff = int(
                 st.number_input(
                     "Point diff (A - B)",
-                    min_value=-128,
-                    max_value=127,
-                    value=int(st.session_state.diff),
+                    value=int(S.diff),
                     step=1,
                     key="diff",
                 )
             )
         # Persist toggle selections back into the canonical session state.
-        st.session_state.cardsA = cardsA
-        st.session_state.cardsB = cardsB
-        st.session_state.cardsP = [c for c in cardsP if c != int(st.session_state.curP)]
+        S.cardsA = cardsA
+        S.cardsB = cardsB
+        S.cardsP = [c for c in cardsP if c != int(S.curP)]
 
-    elif mode == "Key":
-        key_text = st.text_input("Cache key (decimal or 0x...)")
-        if key_text.strip():
-            try:
-                key_val = int(key_text.strip(), 0)
-            except ValueError:
-                st.error("Invalid key. Use decimal or 0x-prefixed hex.")
-                return
-            cardsA, cardsB, cardsP, diff, curP = decode_key_state(key_val)
-            render_state_summary(cardsA, cardsB, cardsP, diff, curP)
-            max_from_key = max(cardsA + cardsB + cardsP + ([curP] if curP else []), default=1)
-            if max_from_key > max_card:
-                st.session_state.max_card = max_from_key
-            if st.button("Use decoded state in Manual mode"):
-                st.session_state.cardsA = cardsA
-                st.session_state.cardsB = cardsB
-                st.session_state.cardsP = cardsP
-                st.session_state.curP = curP
-                st.session_state.curP_prev = curP
-                st.session_state.diff = diff
-                st.session_state.cardsA_n = max(st.session_state.max_card, max_from_key)
-                st.session_state.mode = "Manual"
-        else:
-            st.info("Enter a cache key to decode a state.")
-            return
-
-    else:  # Sample
+    elif mode == "Sample":
         if "sample_keys" not in st.session_state:
-            st.session_state.sample_keys = []
+            S.sample_keys = []
         if "sample_params" not in st.session_state:
-            st.session_state.sample_params = None
+            S.sample_params = None
         rng_seed = st.number_input("Sample RNG seed", min_value=0, max_value=2**31 - 1, value=0, step=1)
-        if "sample_cards" in st.session_state and st.session_state.sample_cards > max_card:
-            st.session_state.sample_cards = max_card
+        if "sample_cards" in st.session_state and S.sample_cards > max_card:
+            S.sample_cards = max_card
         sample_cards = st.number_input(
             "Cards per player (N)",
             min_value=1,
@@ -210,7 +181,7 @@ def render_explore_tab(
             int(sample_size),
             str(cache_path),
         )
-        if st.session_state.sample_params != params:
+        if S.sample_params != params:
             rng = random.Random(int(rng_seed))
             with st.spinner("Sampling cache keys..."):
                 sample, matched = reservoir_sample_filtered(
@@ -219,18 +190,21 @@ def render_explore_tab(
                     rng,
                     cards_per_player=int(sample_cards),
                 )
-                st.session_state.sample_keys = sample
-                st.session_state.sample_matched = matched
-                st.session_state.sample_params = params
-        if not st.session_state.sample_keys:
+                S.sample_keys = sample
+                S.sample_matched = matched
+                S.sample_params = params
+        if not S.sample_keys:
             st.info("Build a sample list to browse random states.")
             return
-        matched = st.session_state.get("sample_matched")
+        matched = S.get("sample_matched")
         if matched is not None:
             st.caption(f"Matched states: {matched}")
-        key_val = st.selectbox("Sampled state key", st.session_state.sample_keys)
+        key_val = st.selectbox("Sampled state key", S.sample_keys)
         cardsA, cardsB, cardsP, diff, curP = decode_key_state(int(key_val))
         render_state_summary(cardsA, cardsB, cardsP, diff, curP)
+    else:
+        st.error(f"Unsupported mode: {mode}")
+        return
 
     cardsA = sorted(cardsA)
     cardsB = sorted(cardsB)
@@ -284,16 +258,16 @@ def render_explore_tab(
         else:
             a2, b2, p2, diff2, curP2 = decode_key_state(int(key_val))
             max_from_key = max(a2 + b2 + p2 + ([curP2] if curP2 else []), default=1)
-            if max_from_key > int(st.session_state.max_card):
-                st.session_state.max_card = int(max_from_key)
-            st.session_state.cardsA = a2
-            st.session_state.cardsB = b2
-            st.session_state.cardsP = p2
-            st.session_state.curP = curP2
-            st.session_state.curP_prev = curP2
-            st.session_state.diff = diff2
-            st.session_state.cardsA_n = int(st.session_state.max_card)
-            st.session_state.mode = "Manual"
+            if max_from_key > int(S.max_card):
+                S.max_card = int(max_from_key)
+            S.cardsA_n = int(S.max_card)
+            S.pending_transition = {
+                "cardsA": a2,
+                "cardsB": b2,
+                "cardsP": p2,
+                "curP": int(curP2),
+                "diff": int(diff2),
+            }
             trigger_rerun()
 
     mat = build_matrix(cache, A_mask, B_mask, P_mask, diff, curP)
@@ -321,8 +295,8 @@ def render_explore_tab(
     advance_next = None
     if cardsP:
         advance_options: List[object] = ["Random"] + cardsP
-        if "advance_next_prize" not in st.session_state or st.session_state.advance_next_prize not in advance_options:
-            st.session_state.advance_next_prize = "Random"
+        if "advance_next_prize" not in st.session_state or S.advance_next_prize not in advance_options:
+            S.advance_next_prize = "Random"
         advance_col, _spacer = st.columns([1, 4])
         with advance_col:
             advance_next = st.selectbox(
@@ -381,7 +355,7 @@ def render_explore_tab(
             if next_prize is None:
                 next_prize = cardsP[0]
             new_diff = diff + cmp(cardA_click, cardB_click) * curP
-            st.session_state.pending_transition = {
+            S.pending_transition = {
                 "cardsA": [c for c in cardsA if c != cardA_click],
                 "cardsB": [c for c in cardsB if c != cardB_click],
                 "cardsP": [c for c in cardsP if c != next_prize],
@@ -409,4 +383,3 @@ def render_explore_tab(
         title = "Win % (B perspective)" if display_percent else "EV (B perspective)"
         value_label = f"{display_value(float(-vA), True):.2f}%" if display_percent else f"{float(-vA):+.6f}"
         render_strategy_panel(title, value_label, df_b, "Copy strategy B CSV", support_b)
-

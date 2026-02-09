@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import random
-from typing import Dict, Iterable, List, Optional, Tuple
+from collections.abc import Mapping
+from typing import Iterable, List, Optional, Tuple
 
 import streamlit as st
 
@@ -130,8 +131,8 @@ def run_auto_play_series(
     strat_b: str,
     sa_seed: int,
     sb_seed: int,
-    cache: Optional[Dict[int, float]],
-) -> Dict[str, object]:
+    cache: Optional[Mapping[int, float]],
+) -> dict[str, object]:
     wins_a = 0
     wins_b = 0
     draws = 0

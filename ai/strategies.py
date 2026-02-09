@@ -1,7 +1,8 @@
 import random
 import sys
 from pathlib import Path
-from typing import Callable, Dict, List, Optional
+from collections.abc import Mapping
+from typing import Callable, List, Optional
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORTS_DIR = ROOT / "reports"
@@ -31,51 +32,25 @@ def sample_action(actions: List[int], probs: np.ndarray, rng: Optional[random.Ra
 
 
 def make_random_strategy(rng: Optional[random.Random] = None) -> ActionFn:
-    rng = rng or random
-
-    def _strategy(state: State) -> int:
-        return rng.choice(list_cards(state.A))
-
-    return _strategy
-
+    r = rng or random
+    return lambda state: r.choice(list_cards(state.A))
 
 def make_highest_strategy() -> ActionFn:
-    def _strategy(state: State) -> int:
-        return max(list_cards(state.A))
-
-    return _strategy
-
+    return lambda state: max(list_cards(state.A))
 
 def make_lowest_strategy() -> ActionFn:
-    def _strategy(state: State) -> int:
-        return min(list_cards(state.A))
-
-    return _strategy
-
+    return lambda state: min(list_cards(state.A))
 
 def make_current_strategy() -> ActionFn:
-    def _strategy(state: State) -> int:
-        cards = list_cards(state.A)
-        if state.curP in cards:
-            return state.curP
-        return min(cards)
+    return lambda state: state.curP if state.curP in list_cards(state.A) else random.choice(list_cards(state.A))
 
-    return _strategy
+def make_current_strategy() -> ActionFn:
+    return lambda state: state.curP + 1 if state.curP + 1 in list_cards(state.A) else random.choice(list_cards(state.A))
 
 
-def make_exploit_current_strategy() -> ActionFn:
-    def _strategy(state: State) -> int:
-        cards = sorted(list_cards(state.A))
-        for card in cards:
-            if card > state.curP:
-                return card
-        return cards[0]
 
-    return _strategy
-
-
-def make_evc_ne_strategy(cache: Dict[int, float], rng: Optional[random.Random] = None) -> ActionFn:
-    rng = rng or random
+def make_evc_ne_strategy(cache: Mapping[int, float], rng: Optional[random.Random] = None) -> ActionFn:
+    r = rng or random
 
     def _strategy(state: State) -> int:
         cardsA = list_cards(state.A)
@@ -86,10 +61,9 @@ def make_evc_ne_strategy(cache: Dict[int, float], rng: Optional[random.Random] =
         pA, _v = findBestStrategy(mat)
         if pA is None:
             return max(cardsA)
-        return sample_action(cardsA, pA, rng=rng)
+        return sample_action(cardsA, pA, rng=r)
 
     return _strategy
-
 
 def strategy_choices() -> List[str]:
     return ["random", "highest", "lowest", "current", "exploit-current", "evc-ne"]
@@ -101,7 +75,7 @@ def strategy_requires_cache(name: str) -> bool:
 
 def build_strategy(name: str,
                    *,
-                   cache: Optional[Dict[int, float]] = None,
+                   cache: Optional[Mapping[int, float]] = None,
                    rng: Optional[random.Random] = None) -> ActionFn:
     if name == "random":
         return make_random_strategy(rng=rng)

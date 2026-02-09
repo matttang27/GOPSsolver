@@ -12,8 +12,6 @@ from evc_viewer_app.session import trigger_rerun
 def get_mode_help(mode: str) -> str:
     if mode == "Manual":
         return "Pick the hands/prizes directly and explore specific states."
-    if mode == "Key":
-        return "Paste a packed cache key to decode a state."
     if mode == "Sample":
         return "Browse a random sample of cached states."
     return ""
@@ -52,10 +50,10 @@ def render_sidebar(cache_path) -> Tuple[str, Optional[int]]:
         )
         mode = st.radio(
             "Mode",
-            ["Manual", "Key", "Sample"],
+            ["Manual", "Sample"],
             horizontal=True,
             key="mode",
-            help="Manual: pick hands/prizes. Key: decode a packed cache key. Sample: browse random cached states.",
+            help="Manual: pick hands/prizes. Sample: browse random cached states.",
         )
         st.caption(get_mode_help(mode))
         if st.button("Reset to start state", type="primary"):
@@ -63,4 +61,3 @@ def render_sidebar(cache_path) -> Tuple[str, Optional[int]]:
             trigger_rerun()
 
     return mode, run_n
-

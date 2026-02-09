@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import random
-from typing import Dict, List, Optional, Tuple
+from collections.abc import Mapping
+from typing import List, Optional, Tuple
 
 import pandas as pd
 import streamlit as st
@@ -11,17 +12,19 @@ from strategies import build_strategy, strategy_choices
 
 from evc_viewer_app.helpers import resolve_rng, run_auto_play_series, start_play_game
 from evc_viewer_app.session import trigger_rerun
+from evc_viewer_app.state_types import ss
 from evc_viewer_app.ui import render_state_summary
 
 
 def _init_play_ui_state() -> None:
+    S = ss()
     if "play_history" not in st.session_state:
-        st.session_state.play_history = []
+        S.play_history = []
     if "play_reveal_prizes" not in st.session_state:
-        st.session_state.play_reveal_prizes = False
+        S.play_reveal_prizes = False
     # Default opponent: "evc-ne" (best-looking baseline bot for this app).
     if "play_bot_strategy" not in st.session_state:
-        st.session_state.play_bot_strategy = "evc-ne"
+        S.play_bot_strategy = "evc-ne"
 
 
 def _render_card_face(
@@ -89,8 +92,9 @@ def _hand_button_grid(
     return clicked
 
 
-def render_play_tabs(cache: Dict[int, float], max_card: int) -> None:
+def render_play_tabs(cache: Mapping[int, float], max_card: int) -> None:
     _init_play_ui_state()
+    S = ss()
     st.subheader("Play / Simulate")
     bot_choices = strategy_choices()
     play_tab, auto_tab = st.tabs(["Play vs Bot", "Auto-play"])
@@ -106,7 +110,7 @@ def render_play_tabs(cache: Dict[int, float], max_card: int) -> None:
                         "Cards (N)",
                         min_value=1,
                         max_value=max_card,
-                        value=int(st.session_state.get("play_n", max_card)),
+                        value=int(S.get("play_n", max_card)),
                         step=1,
                         key="play_n",
                     )
@@ -115,7 +119,7 @@ def render_play_tabs(cache: Dict[int, float], max_card: int) -> None:
                         "Game seed (0=random)",
                         min_value=0,
                         max_value=2**31 - 1,
-                        value=int(st.session_state.get("play_seed", 0)),
+                        value=int(S.get("play_seed", 0)),
                         step=1,
                         key="play_seed",
                     )
@@ -124,30 +128,30 @@ def render_play_tabs(cache: Dict[int, float], max_card: int) -> None:
                     "Bot seed (-1=use game RNG, 0=random)",
                     min_value=-1,
                     max_value=2**31 - 1,
-                    value=int(st.session_state.get("play_bot_seed", -1)),
+                    value=int(S.get("play_bot_seed", -1)),
                     step=1,
                     key="play_bot_seed",
                 )
             with right:
-                st.toggle("Reveal prize order", value=bool(st.session_state.play_reveal_prizes), key="play_reveal_prizes")
+                st.toggle("Reveal prize order", value=bool(S.play_reveal_prizes), key="play_reveal_prizes")
                 if st.button("Start new game", key="play_start", type="primary", use_container_width=True):
                     start_play_game(int(play_n), int(play_seed))
-                    st.session_state.play_bot_rng = random.Random(int(bot_seed)) if int(bot_seed) > 0 else None
-                    st.session_state.play_bot_rng_seed = int(bot_seed)
-                    st.session_state.play_history = []
+                    S.play_bot_rng = random.Random(int(bot_seed)) if int(bot_seed) > 0 else None
+                    S.play_bot_rng_seed = int(bot_seed)
+                    S.play_history = []
                     trigger_rerun()
                 if st.button("End game", key="play_end", use_container_width=True):
-                    st.session_state.play_active = False
-                    st.session_state.play_over = False
-                    st.session_state.play_last_choices = None
-                    st.session_state.play_final_diff = None
+                    S.play_active = False
+                    S.play_over = False
+                    S.play_last_choices = None
+                    S.play_final_diff = None
 
-        if st.session_state.get("play_active"):
-            cardsA = list_cards(int(st.session_state.play_A_mask))
-            cardsB = list_cards(int(st.session_state.play_B_mask))
-            cardsP = list_cards(int(st.session_state.play_P_mask))
-            curP = int(st.session_state.play_curP)
-            diff = int(st.session_state.play_diff)
+        if S.get("play_active"):
+            cardsA = list_cards(int(S.play_A_mask))
+            cardsB = list_cards(int(S.play_B_mask))
+            cardsP = list_cards(int(S.play_P_mask))
+            curP = int(S.play_curP)
+            diff = int(S.play_diff)
 
             # Tabletop layout: Score card, Prize card, Last round card.
             top_l, top_c, top_r = st.columns([2, 2, 2], vertical_alignment="top")
@@ -162,7 +166,7 @@ def render_play_tabs(cache: Dict[int, float], max_card: int) -> None:
             with top_c:
                 _render_card_face(curP, title="Current Prize", subtitle=f"Remaining prizes: {len(cardsP)}", accent="#0f766e")
             with top_r:
-                last = (st.session_state.get("play_history") or [])[-1] if (st.session_state.get("play_history") or []) else None
+                last = (S.get("play_history") or [])[-1] if (S.get("play_history") or []) else None
                 if last:
                     _render_card_face(
                         f"{last['you']} vs {last['bot']}",
@@ -173,15 +177,15 @@ def render_play_tabs(cache: Dict[int, float], max_card: int) -> None:
                 else:
                     _render_card_face("—", title="Last Round", subtitle="No rounds played yet.", accent="#0f172a")
 
-            if st.session_state.get("play_reveal_prizes") and st.session_state.get("play_prizes"):
-                prizes = list(st.session_state.play_prizes)
-                idx = int(st.session_state.get("play_index", 0))
+            if S.get("play_reveal_prizes") and S.get("play_prizes"):
+                prizes = list(S.play_prizes)
+                idx = int(S.get("play_index", 0))
                 upcoming = prizes[idx + 1 :]
                 with st.expander("Prize order (revealed)", expanded=False):
                     st.write(f"Current index: `{idx}`")
                     st.write("Upcoming prizes:", upcoming if upcoming else "None")
 
-            if st.session_state.get("play_over"):
+            if S.get("play_over"):
                 # No extra details needed on game over; the score card is enough.
                 pass
             elif not cardsA or not cardsB:
@@ -199,22 +203,22 @@ def render_play_tabs(cache: Dict[int, float], max_card: int) -> None:
 
                 if clicked_card is not None:
                     choiceA = int(clicked_card)
-                    bot_seed_val = int(st.session_state.play_bot_seed)
+                    bot_seed_val = int(S.play_bot_seed)
                     if bot_seed_val > 0:
                         if (
-                            st.session_state.get("play_bot_rng_seed") != bot_seed_val
-                            or st.session_state.get("play_bot_rng") is None
+                            S.get("play_bot_rng_seed") != bot_seed_val
+                            or S.get("play_bot_rng") is None
                         ):
-                            st.session_state.play_bot_rng = random.Random(bot_seed_val)
-                            st.session_state.play_bot_rng_seed = bot_seed_val
-                        bot_rng = st.session_state.play_bot_rng
+                            S.play_bot_rng = random.Random(bot_seed_val)
+                            S.play_bot_rng_seed = bot_seed_val
+                        bot_rng = S.play_bot_rng
                     else:
-                        bot_rng = resolve_rng(bot_seed_val, st.session_state.get("play_rng"))
+                        bot_rng = resolve_rng(bot_seed_val, S.get("play_rng"))
 
-                    bot_strat = build_strategy(st.session_state.play_bot_strategy, cache=cache, rng=bot_rng)
-                    A_mask = int(st.session_state.play_A_mask)
-                    B_mask = int(st.session_state.play_B_mask)
-                    P_mask = int(st.session_state.play_P_mask)
+                    bot_strat = build_strategy(S.play_bot_strategy, cache=cache, rng=bot_rng)
+                    A_mask = int(S.play_A_mask)
+                    B_mask = int(S.play_B_mask)
+                    P_mask = int(S.play_P_mask)
                     state_for_b = State(A=B_mask, B=A_mask, P=P_mask, diff=-diff, curP=curP)
                     choiceB = int(bot_strat(state_for_b))
                     if choiceB not in cardsB:
@@ -224,8 +228,8 @@ def render_play_tabs(cache: Dict[int, float], max_card: int) -> None:
                         new_diff = int(diff + delta)
                         new_A = remove_card(A_mask, choiceA)
                         new_B = remove_card(B_mask, choiceB)
-                        st.session_state.play_last_choices = (choiceA, choiceB)
-                        st.session_state.play_history.append(
+                        S.play_last_choices = (choiceA, choiceB)
+                        S.play_history.append(
                             {
                                 "prize": int(curP),
                                 "you": int(choiceA),
@@ -235,25 +239,25 @@ def render_play_tabs(cache: Dict[int, float], max_card: int) -> None:
                             }
                         )
                         if P_mask == 0:
-                            st.session_state.play_A_mask = new_A
-                            st.session_state.play_B_mask = new_B
-                            st.session_state.play_curP = 0
-                            st.session_state.play_diff = new_diff
-                            st.session_state.play_over = True
-                            st.session_state.play_final_diff = new_diff
+                            S.play_A_mask = new_A
+                            S.play_B_mask = new_B
+                            S.play_curP = 0
+                            S.play_diff = new_diff
+                            S.play_over = True
+                            S.play_final_diff = new_diff
                         else:
-                            next_idx = int(st.session_state.play_index) + 1
-                            prizes = st.session_state.play_prizes
+                            next_idx = int(S.play_index) + 1
+                            prizes = S.play_prizes
                             next_prize = prizes[next_idx]
-                            st.session_state.play_index = next_idx
-                            st.session_state.play_A_mask = new_A
-                            st.session_state.play_B_mask = new_B
-                            st.session_state.play_P_mask = remove_card(P_mask, next_prize)
-                            st.session_state.play_curP = int(next_prize)
-                            st.session_state.play_diff = new_diff
+                            S.play_index = next_idx
+                            S.play_A_mask = new_A
+                            S.play_B_mask = new_B
+                            S.play_P_mask = remove_card(P_mask, next_prize)
+                            S.play_curP = int(next_prize)
+                            S.play_diff = new_diff
                         trigger_rerun()
 
-            hist = st.session_state.get("play_history") or []
+            hist = S.get("play_history") or []
             if hist:
                 with st.expander("Round log", expanded=False):
                     df_hist = pd.DataFrame(hist)
@@ -271,7 +275,7 @@ def render_play_tabs(cache: Dict[int, float], max_card: int) -> None:
                     "Cards (N)",
                     min_value=1,
                     max_value=max_card,
-                    value=int(st.session_state.get("auto_n", max_card)),
+                    value=int(S.get("auto_n", max_card)),
                     step=1,
                     key="auto_n",
                 )
@@ -279,7 +283,7 @@ def render_play_tabs(cache: Dict[int, float], max_card: int) -> None:
                 auto_count = st.number_input(
                     "Games",
                     min_value=1,
-                    value=int(st.session_state.get("auto_count", 50)),
+                    value=int(S.get("auto_count", 50)),
                     step=1,
                     key="auto_count",
                 )
@@ -288,7 +292,7 @@ def render_play_tabs(cache: Dict[int, float], max_card: int) -> None:
                     "Series seed (0=random)",
                     min_value=0,
                     max_value=2**31 - 1,
-                    value=int(st.session_state.get("auto_seed", 0)),
+                    value=int(S.get("auto_seed", 0)),
                     step=1,
                     key="auto_seed",
                 )
@@ -304,7 +308,7 @@ def render_play_tabs(cache: Dict[int, float], max_card: int) -> None:
                     "Strategy A seed",
                     min_value=-1,
                     max_value=2**31 - 1,
-                    value=int(st.session_state.get("auto_sa_seed", -1)),
+                    value=int(S.get("auto_sa_seed", -1)),
                     step=1,
                     key="auto_sa_seed",
                     help="-1=use game RNG, 0=random",
@@ -316,7 +320,7 @@ def render_play_tabs(cache: Dict[int, float], max_card: int) -> None:
                     "Strategy B seed",
                     min_value=-1,
                     max_value=2**31 - 1,
-                    value=int(st.session_state.get("auto_sb_seed", -1)),
+                    value=int(S.get("auto_sb_seed", -1)),
                     step=1,
                     key="auto_sb_seed",
                     help="-1=use game RNG, 0=random",
@@ -325,7 +329,7 @@ def render_play_tabs(cache: Dict[int, float], max_card: int) -> None:
             run_clicked = st.button("Run auto-play", key="auto_run", type="primary", use_container_width=True)
 
         if run_clicked:
-            st.session_state.auto_results = run_auto_play_series(
+            S.auto_results = run_auto_play_series(
                 int(auto_n),
                 int(auto_seed),
                 int(auto_count),
@@ -335,7 +339,7 @@ def render_play_tabs(cache: Dict[int, float], max_card: int) -> None:
                 int(auto_sb_seed),
                 cache,
             )
-        results = st.session_state.get("auto_results")
+        results = S.get("auto_results")
         if results:
             with st.container(border=True):
                 st.markdown("**Results**")
