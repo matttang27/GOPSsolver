@@ -117,11 +117,12 @@ static void storeIfEnabled(const StateKey& key, double value) {
 static double oneCardEV(const State& s) {
     std::uint8_t cardA = onlyCard(s.A);
     std::uint8_t cardB = onlyCard(s.B);
-    double cmpResult = cmp(cardA, cardB);
+    int roundDelta = cmp(cardA, cardB) * s.curP;
     if (g_solveObjective == SolveObjective::Points) {
-        return static_cast<double>(cmpResult * s.curP);
+        return static_cast<double>(roundDelta);
     }
-    return cmpResult;
+    int finalDiff = s.diff + roundDelta;
+    return static_cast<double>(cmp(finalDiff, 0));
 }
 
 static double solveEVWin(State s) {
@@ -166,7 +167,9 @@ static double solveEVWin(State s) {
         }
     }
     if (popcount16(s.A) == 1) {
-        return oneCardEV(s);
+        double ev = oneCardEV(s);
+        storeIfEnabled(key, ev);
+        return ev;
     }
     auto M = buildMatrix(s);
     auto lpStart = std::chrono::steady_clock::now();
@@ -214,7 +217,9 @@ static double solveEVPoints(State s) {
 
     ++g_solveEVCalls;
     if (popcount16(s.A) == 1) {
-        return oneCardEV(s);
+        double ev = oneCardEV(s);
+        storeIfEnabled(key, ev);
+        return ev;
     }
 
     auto M = buildMatrix(s);

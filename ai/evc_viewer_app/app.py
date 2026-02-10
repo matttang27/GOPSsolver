@@ -47,7 +47,7 @@ def main() -> None:
 
     mode, _run_n = render_sidebar(CACHE_PATH)
     if not CACHE_PATH.exists():
-        st.error("Cache file not found: reports/full8.evc")
+        st.error(f"Cache file not found: {CACHE_PATH}")
         return
 
     with st.spinner("Loading cache..."):

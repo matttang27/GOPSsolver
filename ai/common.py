@@ -10,7 +10,16 @@ import numpy as np
 EPS = 1e-12
 _MAGIC = b"GOPSEV1\0"
 _HEADER_STRUCT = struct.Struct("<IIQ")
-_RECORD_DTYPE = np.dtype([("key", "<u8"), ("ev", "<f8")])
+_RECORD_DTYPE_V1 = np.dtype([("key", "<u8"), ("ev", "<f8")])
+_RECORD_DTYPE_V2 = np.dtype([("key", "<u8"), ("ev", "<f4")])
+
+
+def _record_dtype_for_version(version: int) -> np.dtype:
+    if version == 1:
+        return _RECORD_DTYPE_V1
+    if version == 2:
+        return _RECORD_DTYPE_V2
+    raise ValueError(f"unsupported cache format version: {version}")
 
 
 @dataclass(frozen=True)
@@ -101,8 +110,9 @@ def load_evc(path: str) -> Mapping[int, float]:
         magic = f.read(8)
         if magic != _MAGIC:
             raise ValueError("bad magic")
-        _version, _reserved, count = _HEADER_STRUCT.unpack(f.read(_HEADER_STRUCT.size))
-        records = np.fromfile(f, dtype=_RECORD_DTYPE, count=count)
+        version, _reserved, count = _HEADER_STRUCT.unpack(f.read(_HEADER_STRUCT.size))
+        dtype = _record_dtype_for_version(int(version))
+        records = np.fromfile(f, dtype=dtype, count=count)
 
     if records.size != count:
         raise ValueError(f"truncated cache: expected {count} records, found {records.size}")
@@ -268,8 +278,15 @@ def get_ev(cache: Mapping[int, float], A: int, B: int, P: int, diff: int, curP: 
     except KeyError:
         if (A == B and diff == 0):
             return 0.0
-        if guaranteed(list_cards(A), list_cards(B), diff, list_cards(P)) != 0:
-            return sign * cmp(diff, 0)
+        if popcount(A) == 1 and popcount(B) == 1 and P == 0:
+            last_delta = cmp(only_card(A), only_card(B)) * curP
+            return float(cmp(diff + last_delta, 0))
+        prizes = list_cards(P)
+        if curP > 0:
+            prizes.append(curP)
+        guaranteed_result = guaranteed(list_cards(A), list_cards(B), diff, prizes)
+        if guaranteed_result != 0:
+            return float(guaranteed_result)
         
         raise KeyError(f"state not in cache: A={A} B={B} P={P} diff={diff} curP={curP}")
     return sign * ev
