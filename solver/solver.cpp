@@ -8,8 +8,35 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <algorithm>
+#include <cctype>
 
 #include "linprog_glpk.h"
+
+const char* objectiveName(SolveObjective objective) {
+    switch (objective) {
+        case SolveObjective::Win:
+            return "win";
+        case SolveObjective::Points:
+            return "points";
+    }
+    return "win";
+}
+
+bool parseObjective(const std::string& value, SolveObjective& out) {
+    std::string lowered = value;
+    std::transform(lowered.begin(), lowered.end(), lowered.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (lowered == "win") {
+        out = SolveObjective::Win;
+        return true;
+    }
+    if (lowered == "points") {
+        out = SolveObjective::Points;
+        return true;
+    }
+    return false;
+}
 
 static std::string toString(const State& state) {
     std::ostringstream out;
@@ -87,7 +114,17 @@ static void storeIfEnabled(const StateKey& key, double value) {
     }
 }
 
-double solveEV(State s) {
+static double oneCardEV(const State& s) {
+    std::uint8_t cardA = onlyCard(s.A);
+    std::uint8_t cardB = onlyCard(s.B);
+    double cmpResult = cmp(cardA, cardB);
+    if (g_solveObjective == SolveObjective::Points) {
+        return static_cast<double>(cmpResult * s.curP);
+    }
+    return cmpResult;
+}
+
+static double solveEVWin(State s) {
     if (s.diff < 0) {
         return -solveEV(State{s.B, s.A, s.P, -s.diff, s.curP});
     }
@@ -129,11 +166,7 @@ double solveEV(State s) {
         }
     }
     if (popcount16(s.A) == 1) {
-        std::uint8_t cardA = onlyCard(s.A);
-        std::uint8_t cardB = onlyCard(s.B);
-        double value = cmp(s.diff + (cmp(cardA, cardB) * s.curP), 0);
-        storeIfEnabled(key, value);
-        return value;
+        return oneCardEV(s);
     }
     auto M = buildMatrix(s);
     auto lpStart = std::chrono::steady_clock::now();
@@ -148,6 +181,62 @@ double solveEV(State s) {
     std::cerr << "GLPK failed for " << toString(s) << " with "
               << toString(result) << std::endl;
     return 0.0;
+}
+
+static double solveEVPoints(State s) {
+    s.diff = 0;
+    int cmpAB = cmp(s.A, s.B);
+    if (cmpAB < 0) {
+        return -solveEVPoints(State{s.B, s.A, s.P, 0, s.curP});
+    } else if (cmpAB == 0) {
+        return 0.0;
+    }
+
+    if (g_enableCompression) {
+        auto compressed = compressCards(s.A, s.B);
+        s.A = compressed.first;
+        s.B = compressed.second;
+    }
+
+    StateKey key = makeStateKey(s);
+    if (g_enableCache) {
+        auto cacheStart = std::chrono::steady_clock::now();
+        double cachedValue = 0.0;
+        bool found = evCacheFind(key, cachedValue);
+        auto cacheEnd = std::chrono::steady_clock::now();
+        g_timing.cacheNs += std::chrono::duration_cast<std::chrono::nanoseconds>(cacheEnd - cacheStart).count();
+        if (found) {
+            ++g_timing.cacheHits;
+            return cachedValue;
+        }
+        ++g_timing.cacheMisses;
+    }
+
+    ++g_solveEVCalls;
+    if (popcount16(s.A) == 1) {
+        return oneCardEV(s);
+    }
+
+    auto M = buildMatrix(s);
+    auto lpStart = std::chrono::steady_clock::now();
+    auto result = findBestStrategyGlpk(M);
+    auto lpEnd = std::chrono::steady_clock::now();
+    g_timing.lpNs += std::chrono::duration_cast<std::chrono::nanoseconds>(lpEnd - lpStart).count();
+    ++g_timing.lpCalls;
+    if (result.success) {
+        storeIfEnabled(key, result.expectedValue);
+        return result.expectedValue;
+    }
+    std::cerr << "GLPK failed for " << toString(s) << " with "
+              << toString(result) << std::endl;
+    return 0.0;
+}
+
+double solveEV(State s) {
+    if (g_solveObjective == SolveObjective::Points) {
+        return solveEVPoints(s);
+    }
+    return solveEVWin(s);
 }
 
 std::vector<double> solveProbabilities(State s) {

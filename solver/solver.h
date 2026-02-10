@@ -13,12 +13,18 @@ struct State {
     int curP = 0;     // current prize value (1..N)
 };
 
+enum class SolveObjective {
+    Win,
+    Points,
+};
+
 extern long long g_solveEVCalls;
 extern long long g_buildMatrixCalls;
 extern double g_buildMatrixMaeSum;
 extern bool g_enableGuarantee;
 extern bool g_enableCompression;
 extern bool g_enableCache;
+extern SolveObjective g_solveObjective;
 
 struct TimingStats {
     long long cacheNs = 0;
@@ -30,6 +36,8 @@ struct TimingStats {
 
 extern TimingStats g_timing;
 void resetTiming();
+const char* objectiveName(SolveObjective objective);
+bool parseObjective(const std::string& value, SolveObjective& out);
 
 double solveEV(State s);
 std::vector<double> solveProbabilities(State s);

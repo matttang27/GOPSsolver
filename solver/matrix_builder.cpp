@@ -29,22 +29,28 @@ std::vector<std::vector<double>> buildMatrix(const State& s) {
             std::uint8_t cardB = cardsB[j];
             auto newA = removeCard(s.A, cardA);
             auto newB = removeCard(s.B, cardB);
-            int newDiff = s.diff + cmp(cardA, cardB) * s.curP;
+            int roundDelta = cmp(cardA, cardB) * s.curP;
+            int newDiff = s.diff + roundDelta;
 
             double sumEV = 0.0;
             std::array<double, kMaxCards> prizeEvs;
             for (int k = 0; k < countP; k++) {
                 std::uint8_t nextPrize = prizes[k];
                 auto newRemaining = removeCard(s.P, nextPrize);
-                State newState{newA, newB, newRemaining, newDiff, nextPrize};
+                int childDiff = (g_solveObjective == SolveObjective::Win) ? newDiff : 0;
+                State newState{newA, newB, newRemaining, childDiff, nextPrize};
                 double ev = solveEV(newState);
                 prizeEvs[k] = ev;
                 sumEV += ev;
             }
-            double avg = sumEV / countP;
+            double continuationAvg = sumEV / countP;
+            double avg = continuationAvg;
+            if (g_solveObjective == SolveObjective::Points) {
+                avg += static_cast<double>(roundDelta);
+            }
             double mae = 0.0;
             for (int k = 0; k < countP; k++) {
-                double diff = prizeEvs[k] - avg;
+                double diff = prizeEvs[k] - continuationAvg;
                 if (diff < 0.0) {
                     diff = -diff;
                 }

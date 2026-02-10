@@ -25,13 +25,23 @@ class State:
 class EVCCache(Mapping[int, float]):
     """Read-only sorted cache with binary-search lookups."""
 
-    __slots__ = ("_keys", "_values", "_memo", "_memo_limit")
+    __slots__ = ("_keys", "_values", "_memo", "_memo_limit", "_objective")
 
-    def __init__(self, keys: np.ndarray, values: np.ndarray, memo_limit: int = 250_000) -> None:
+    def __init__(self,
+                 keys: np.ndarray,
+                 values: np.ndarray,
+                 memo_limit: int = 250_000,
+                 objective: str = "win") -> None:
         self._keys = np.ascontiguousarray(keys, dtype=np.uint64)
         self._values = np.ascontiguousarray(values, dtype=np.float64)
         self._memo: dict[int, float] = {}
         self._memo_limit = int(max(memo_limit, 0))
+        objective_norm = objective.strip().lower()
+        self._objective = objective_norm if objective_norm in {"win", "points"} else "win"
+
+    @property
+    def objective(self) -> str:
+        return self._objective
 
     def __len__(self) -> int:
         return int(self._keys.size)
@@ -76,6 +86,17 @@ class EVCCache(Mapping[int, float]):
 
 
 def load_evc(path: str) -> Mapping[int, float]:
+    objective = "win"
+    meta = load_meta(path)
+    if isinstance(meta, dict):
+        config = meta.get("config")
+        if isinstance(config, dict):
+            value = config.get("objective")
+            if isinstance(value, str):
+                value_norm = value.strip().lower()
+                if value_norm in {"win", "points"}:
+                    objective = value_norm
+
     with open(path, "rb") as f:
         magic = f.read(8)
         if magic != _MAGIC:
@@ -101,7 +122,16 @@ def load_evc(path: str) -> Mapping[int, float]:
         keys = keys[keep]
         values = values[keep]
 
-    return EVCCache(keys, values)
+    return EVCCache(keys, values, objective=objective)
+
+
+def cache_objective(cache: Mapping[int, float]) -> str:
+    objective = getattr(cache, "objective", "win")
+    if isinstance(objective, str):
+        value = objective.strip().lower()
+        if value in {"win", "points"}:
+            return value
+    return "win"
 
 
 def build_matrix(cache: Mapping[int, float],
@@ -110,40 +140,61 @@ def build_matrix(cache: Mapping[int, float],
                  P: int,
                  diff: int,
                  curP: int) -> List[List[float]]:
-
+    objective = cache_objective(cache)
     cardsA = list_cards(A)
     cardsB = list_cards(B)
     prizes = list_cards(P)
     countA = len(cardsA)
     countB = len(cardsB)
     countP = len(prizes)
-    #print(cardsA, cardsB, prizes)
     if countA != countB or countP != countA - 1:
         return []
+
+    mat = [[0.0 for _ in range(countA)] for _ in range(countA)]
     if countP == 0:
-        # Terminal round: value is determined solely by the current prize.
-        mat = [[0.0 for _ in range(countA)] for _ in range(countA)]
         for i, cardA in enumerate(cardsA):
             for j, cardB in enumerate(cardsB):
-                newDiff = diff + cmp(cardA, cardB) * curP
-                mat[i][j] = float(cmp(newDiff, 0))
+                delta = cmp(cardA, cardB) * curP
+                if objective == "points":
+                    mat[i][j] = float(delta)
+                else:
+                    newDiff = diff + delta
+                    mat[i][j] = float(cmp(newDiff, 0))
         return mat
-    mat = [[0.0 for _ in range(countA)] for _ in range(countA)]
+
     for i, cardA in enumerate(cardsA):
         for j, cardB in enumerate(cardsB):
             newA = remove_card(A, cardA)
             newB = remove_card(B, cardB)
-            newDiff = diff + cmp(cardA, cardB) * curP
+            delta = cmp(cardA, cardB) * curP
+            newDiff = diff + delta
             sum_ev = 0.0
             for prize in prizes:
                 newP = remove_card(P, prize)
                 try:
-                    ev = get_ev(cache, newA, newB, newP, newDiff, prize)
+                    if objective == "points":
+                        ev = get_ev_points(cache, newA, newB, newP, prize)
+                    else:
+                        ev = get_ev(cache, newA, newB, newP, newDiff, prize)
                 except KeyError:
-                    print(f"Missing state in cache: A={list_cards(newA)} B={list_cards(newB)} P={list_cards(newP)} diff={newDiff} curP={prize}")
+                    if objective == "points":
+                        print(
+                            "Missing state in cache: "
+                            f"A={list_cards(newA)} B={list_cards(newB)} P={list_cards(newP)} "
+                            f"curP={prize} objective=points"
+                        )
+                    else:
+                        print(
+                            "Missing state in cache: "
+                            f"A={list_cards(newA)} B={list_cards(newB)} P={list_cards(newP)} "
+                            f"diff={newDiff} curP={prize}"
+                        )
                     return []
                 sum_ev += ev
-            mat[i][j] = sum_ev / countP
+            avg = sum_ev / countP
+            if objective == "points":
+                avg += delta
+            mat[i][j] = avg
     return mat
 
 
@@ -194,11 +245,22 @@ def canonicalize(A: int, B: int, P: int, diff: int, curP: int) -> Tuple[int, flo
     return encode_key(A, B, P, diff, curP), sign
 
 
+def canonicalize_points(A: int, B: int, P: int, curP: int) -> Tuple[int, float]:
+    sign = 1.0
+    if A < B:
+        A, B = B, A
+        sign = -sign
+    A, B = compress_cards(A, B)
+    return encode_key(A, B, P, 0, curP), sign
+
+
 def canonicalize_state(state: State) -> Tuple[int, float]:
     return canonicalize(state.A, state.B, state.P, state.diff, state.curP)
 
 
 def get_ev(cache: Mapping[int, float], A: int, B: int, P: int, diff: int, curP: int) -> float:
+    if cache_objective(cache) == "points":
+        return get_ev_points(cache, A, B, P, curP)
     key, sign = canonicalize(A, B, P, diff, curP)
     # Avoid double lookup for non-dict cache backends.
     try:
@@ -213,7 +275,20 @@ def get_ev(cache: Mapping[int, float], A: int, B: int, P: int, diff: int, curP: 
     return sign * ev
 
 
+def get_ev_points(cache: Mapping[int, float], A: int, B: int, P: int, curP: int) -> float:
+    if A == B:
+        return 0.0
+    key, sign = canonicalize_points(A, B, P, curP)
+    try:
+        ev = cache[key]
+    except KeyError:
+        raise KeyError(f"state not in cache (points): A={A} B={B} P={P} curP={curP}")
+    return sign * ev
+
+
 def get_ev_state(cache: Mapping[int, float], state: State) -> float:
+    if cache_objective(cache) == "points":
+        return get_ev_points(cache, state.A, state.B, state.P, state.curP)
     return get_ev(cache, state.A, state.B, state.P, state.diff, state.curP)
 
 def list_to_mask(cards: List[int]) -> int:

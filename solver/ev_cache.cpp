@@ -256,7 +256,9 @@ bool saveEvCacheMetadata(const std::string& evcPath,
     out << "\n";
     out << "  \"config\": {\n";
     out << "    \"kMaxCards\": " << kMaxCards << ",\n";
+    out << "    \"objective\": \"" << objectiveName(g_solveObjective) << "\",\n";
     out << "    \"key_packing\": \"A16|B16|P16|diff8|curP8\",\n";
+    out << "    \"key_notes\": \"For objective=points, diff is always 0 and ignored.\",\n";
     out << "    \"endianness\": \"" << jsonEscape(endiannessString()) << "\",\n";
     out << "    \"float_format\": \"IEEE754 double\",\n";
     out << "    \"toggles\": {\n";

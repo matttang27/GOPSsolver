@@ -44,7 +44,7 @@ def make_lowest_strategy() -> ActionFn:
 def make_current_strategy() -> ActionFn:
     return lambda state: state.curP if state.curP in list_cards(state.A) else random.choice(list_cards(state.A))
 
-def make_current_strategy() -> ActionFn:
+def make_exploit_current_strategy() -> ActionFn:
     return lambda state: state.curP + 1 if state.curP + 1 in list_cards(state.A) else random.choice(list_cards(state.A))
 
 

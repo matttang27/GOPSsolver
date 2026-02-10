@@ -85,6 +85,7 @@ void printUsage(const char* exeName) {
     std::cout << "  --no-cache       Disable EV cache" << std::endl;
     std::cout << "  --no-compress    Disable state compression" << std::endl;
     std::cout << "  --no-guarantee   Disable guaranteed shortcut" << std::endl;
+    std::cout << "  --objective MODE Set objective: win|points (default: win)" << std::endl;
     std::cout << "  --n N            Set N (default: 8)" << std::endl;
     std::cout << "  --cache-out PATH Save EV cache to PATH (use {n} for per-N files)" << std::endl;
     std::cout << "  --help           Show this help message" << std::endl;
@@ -150,6 +151,17 @@ int main(int argc, char** argv) {
             g_enableCompression = false;
         } else if (arg == "--no-guarantee") {
             g_enableGuarantee = false;
+        } else if (arg == "--objective") {
+            if (argi + 1 >= argc) {
+                std::cout << "Missing value for --objective" << std::endl;
+                return 1;
+            }
+            SolveObjective parsedObjective;
+            if (!parseObjective(argv[++argi], parsedObjective)) {
+                std::cout << "Invalid --objective value. Expected one of: win, points" << std::endl;
+                return 1;
+            }
+            g_solveObjective = parsedObjective;
         } else if (arg == "--n") {
             if (argi + 1 >= argc) {
                 std::cout << "Missing value for --n" << std::endl;
@@ -170,6 +182,10 @@ int main(int argc, char** argv) {
             printUsage(argv[0]);
             return 1;
         }
+    }
+
+    if (g_solveObjective == SolveObjective::Points && g_enableGuarantee) {
+        std::cout << "Note: guarantee shortcut is ignored for objective=points." << std::endl;
     }
 
     long long totalMs = 0;

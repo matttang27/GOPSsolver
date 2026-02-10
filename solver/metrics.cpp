@@ -7,3 +7,4 @@ TimingStats g_timing;
 bool g_enableGuarantee = true;
 bool g_enableCompression = true;
 bool g_enableCache = true;
+SolveObjective g_solveObjective = SolveObjective::Win;
