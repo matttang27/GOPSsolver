@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "evc_file": "../reports/full6_new.evc",
+  "evc_format_version": 1,
+  "created_at_utc": "2026-02-11T20:43:44Z",
+  "notes": "",
+
+  "build": {
+    "git_commit": "",
+    "build_type": "Release",
+    "compiler": "MSVC 1944",
+    "glpk_version": "5.0"
+  },
+
+  "config": {
+    "kMaxCards": 16,
+    "objective": "win",
+    "key_packing": "A16|B16|P16|diff8|curP8",
+    "key_notes": "For objective=points, diff is always 0 and ignored.",
+    "endianness": "little",
+    "float_format": "IEEE754 double",
+    "toggles": {
+      "cache": true,
+      "guarantee": true,
+      "compression": true
+    }
+  },
+
+  "run": {
+    "N": 6,
+    "duration_ms": 613,
+    "args": ".\\build\\vcpkg\\Release\\cpp_solver.exe --cache-out ../reports/full6_new.evc --n 6",
+    "host": { "os": "Windows", "cpu": "", "ram_gb": null }
+  },
+
+  "stats": {
+    "record_count": 29068,
+    "ev_min": -1,
+    "ev_max": 1,
+    "ev_mean": 0.456127,
+    "ev_stdev": 0.723984,
+    "solveEV_calls": 419,
+    "matrix_mae_avg": 0.00774205,
+    "cache_hits": 544458,
+    "cache_misses": 29068
+  }
+}

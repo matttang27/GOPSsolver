@@ -13,18 +13,6 @@
 
 #include "linprog_glpk.h"
 
-template <typename Func>
-static auto runTimed(Func&& func, long long& timeNs, long long* callCount = nullptr) -> decltype(func()) {
-    auto start = std::chrono::steady_clock::now();
-    auto result = func();
-    auto end = std::chrono::steady_clock::now();
-    timeNs += std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
-    if (callCount != nullptr) {
-        ++(*callCount);
-    }
-    return result;
-}
-
 const char* objectiveName(SolveObjective objective) {
     switch (objective) {
         case SolveObjective::Win:
@@ -126,7 +114,7 @@ static void storeIfEnabled(const StateKey& key, double value) {
     }
 }
 
-static double oneCardEV(const State& s) {
+static double lastCardEV(const State& s) {
     std::uint8_t cardA = onlyCard(s.A);
     std::uint8_t cardB = onlyCard(s.B);
     int roundDelta = cmp(cardA, cardB) * s.curP;
@@ -159,9 +147,11 @@ static double solveEVWin(State s) {
     }
     StateKey key = makeStateKey(s);
     if (g_enableCache) {
+        auto cacheStart = std::chrono::steady_clock::now();
         double cachedValue = 0.0;
-        bool found = runTimed([&]() { return evCacheFind(key, cachedValue); },
-                              g_timing.cacheNs);
+        bool found = evCacheFind(key, cachedValue);
+        auto cacheEnd = std::chrono::steady_clock::now();
+        g_timing.cacheNs += std::chrono::duration_cast<std::chrono::nanoseconds>(cacheEnd - cacheStart).count();
         if (found) {
             ++g_timing.cacheHits;
             return cachedValue;
@@ -177,13 +167,16 @@ static double solveEVWin(State s) {
         }
     }
     if (popcount16(s.A) == 1) {
-        double ev = oneCardEV(s);
+        double ev = lastCardEV(s);
         storeIfEnabled(key, ev);
         return ev;
     }
     auto M = buildMatrix(s);
-    auto result = runTimed([&]() { return findBestStrategyGlpk(M); },
-                           g_timing.lpNs, &g_timing.lpCalls);
+    auto lpStart = std::chrono::steady_clock::now();
+    auto result = findBestStrategyGlpk(M);
+    auto lpEnd = std::chrono::steady_clock::now();
+    g_timing.lpNs += std::chrono::duration_cast<std::chrono::nanoseconds>(lpEnd - lpStart).count();
+    ++g_timing.lpCalls;
     if (result.success) {
         storeIfEnabled(key, result.expectedValue);
         return result.expectedValue;
@@ -210,9 +203,11 @@ static double solveEVPoints(State s) {
 
     StateKey key = makeStateKey(s);
     if (g_enableCache) {
+        auto cacheStart = std::chrono::steady_clock::now();
         double cachedValue = 0.0;
-        bool found = runTimed([&]() { return evCacheFind(key, cachedValue); },
-                              g_timing.cacheNs);
+        bool found = evCacheFind(key, cachedValue);
+        auto cacheEnd = std::chrono::steady_clock::now();
+        g_timing.cacheNs += std::chrono::duration_cast<std::chrono::nanoseconds>(cacheEnd - cacheStart).count();
         if (found) {
             ++g_timing.cacheHits;
             return cachedValue;
@@ -222,14 +217,17 @@ static double solveEVPoints(State s) {
 
     ++g_solveEVCalls;
     if (popcount16(s.A) == 1) {
-        double ev = oneCardEV(s);
+        double ev = lastCardEV(s);
         storeIfEnabled(key, ev);
         return ev;
     }
 
     auto M = buildMatrix(s);
-    auto result = runTimed([&]() { return findBestStrategyGlpk(M); },
-                           g_timing.lpNs, &g_timing.lpCalls);
+    auto lpStart = std::chrono::steady_clock::now();
+    auto result = findBestStrategyGlpk(M);
+    auto lpEnd = std::chrono::steady_clock::now();
+    g_timing.lpNs += std::chrono::duration_cast<std::chrono::nanoseconds>(lpEnd - lpStart).count();
+    ++g_timing.lpCalls;
     if (result.success) {
         storeIfEnabled(key, result.expectedValue);
         return result.expectedValue;
