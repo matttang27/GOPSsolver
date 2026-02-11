@@ -41,11 +41,13 @@ def make_highest_strategy() -> ActionFn:
 def make_lowest_strategy() -> ActionFn:
     return lambda state: min(list_cards(state.A))
 
-def make_current_strategy() -> ActionFn:
-    return lambda state: state.curP if state.curP in list_cards(state.A) else random.choice(list_cards(state.A))
+def make_current_strategy(rng: Optional[random.Random] = None) -> ActionFn:
+    r = rng or random
+    return lambda state: state.curP if state.curP in list_cards(state.A) else r.choice(list_cards(state.A))
 
-def make_exploit_current_strategy() -> ActionFn:
-    return lambda state: state.curP + 1 if state.curP + 1 in list_cards(state.A) else random.choice(list_cards(state.A))
+def make_exploit_current_strategy(rng: Optional[random.Random] = None) -> ActionFn:
+    r = rng or random
+    return lambda state: state.curP + 1 if state.curP + 1 in list_cards(state.A) else r.choice(list_cards(state.A))
 
 
 
@@ -84,9 +86,9 @@ def build_strategy(name: str,
     if name == "lowest":
         return make_lowest_strategy()
     if name == "current":
-        return make_current_strategy()
+        return make_current_strategy(rng=rng)
     if name == "exploit-current":
-        return make_exploit_current_strategy()
+        return make_exploit_current_strategy(rng=rng)
     if name == "evc-ne":
         if cache is None:
             raise ValueError("evc-ne strategy requires a cache")
