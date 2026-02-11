@@ -1,3 +1,10 @@
 {
-    "cmake.sourceDirectory": "C:/Users/mattt/Documents/MatthewPrograms/GOPSsolver/solver"
+    "cmake.sourceDirectory": "C:/Users/mattt/Documents/MatthewPrograms/GOPSsolver/solver",
+  "python.defaultInterpreterPath": "C:\\Users\\mattt\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+  "python.analysis.extraPaths": [
+    "${workspaceFolder}/ai",
+    "${workspaceFolder}/tests"
+  ],
+  "python.analysis.autoSearchPaths": true
 }
+
