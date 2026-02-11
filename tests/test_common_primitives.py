@@ -12,9 +12,10 @@ from common import (
     decode_key,
     encode_key,
     guaranteed,
+    highest_card,
     list_cards,
     list_to_mask,
-    only_card,
+    lowest_card,
     popcount,
     remove_card,
     state_from_key,
@@ -46,12 +47,30 @@ class TestCommonPrimitives(unittest.TestCase):
         m = list_to_mask(cards)
         self.assertEqual(list_cards(m), cards)
 
-    def test_remove_card_popcount_only_card(self) -> None:
+    def test_remove_card_popcount_lowest_card(self) -> None:
+        cases = [
+            (0, 0, 0, 0),
+            (test_support.mask([1]), 1, 1, 1),
+            (test_support.mask([4]), 1, 4, 4),
+            (test_support.mask([13]), 1, 13, 13),
+            (test_support.mask([2, 4, 5]), 3, 2, 5),
+            (test_support.mask([1, 7, 13]), 3, 1, 13),
+            (test_support.mask([3, 4, 5, 6]), 4, 3, 6),
+        ]
+
+        for mask, expected_count, expected_lowest, expected_highest in cases:
+            with self.subTest(mask=mask):
+                self.assertEqual(popcount(mask), expected_count)
+                self.assertEqual(lowest_card(mask), expected_lowest)
+                self.assertEqual(highest_card(mask), expected_highest)
+
         m = test_support.mask([2, 4, 5])
-        self.assertEqual(popcount(m), 3)
-        self.assertEqual(only_card(test_support.mask([4])), 4)
-        self.assertEqual(only_card(0), 0)
         self.assertEqual(popcount(remove_card(m, 4)), 2)
+        self.assertEqual(lowest_card(remove_card(m, 2)), 4)
+        self.assertEqual(highest_card(remove_card(m, 5)), 4)
+        self.assertEqual(popcount(remove_card(0, 9)), 0)
+        self.assertEqual(lowest_card(remove_card(0, 9)), 0)
+        self.assertEqual(highest_card(remove_card(0, 9)), 0)
 
     def test_canonicalize_negative_diff_swaps_players(self) -> None:
         A = test_support.mask([1, 3])

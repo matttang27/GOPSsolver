@@ -279,7 +279,7 @@ def get_ev(cache: Mapping[int, float], A: int, B: int, P: int, diff: int, curP: 
         if (A == B and diff == 0):
             return 0.0
         if popcount(A) == 1 and popcount(B) == 1 and P == 0:
-            last_delta = cmp(only_card(A), only_card(B)) * curP
+            last_delta = cmp(lowest_card(A), lowest_card(B)) * curP
             return float(cmp(diff + last_delta, 0))
         prizes = list_cards(P)
         if curP > 0:
@@ -332,12 +332,16 @@ def popcount(mask: int) -> int:
     return mask.bit_count()
 
 
-def only_card(mask: int) -> int:
+def lowest_card(mask: int) -> int:
     if mask == 0:
         return 0
     lsb = mask & -mask
     return lsb.bit_length()
 
+def highest_card(mask: int) -> int:
+    if mask == 0:
+        return 0
+    return mask.bit_length()
 
 def cmp(a: int, b: int) -> int:
     return (a > b) - (a < b)
