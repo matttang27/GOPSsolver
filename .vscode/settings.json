@@ -5,6 +5,15 @@
     "${workspaceFolder}/ai",
     "${workspaceFolder}/tests"
   ],
-  "python.analysis.autoSearchPaths": true
+  "python.analysis.autoSearchPaths": true,
+  "python.testing.unittestArgs": [
+    "-v",
+    "-s",
+    ".",
+    "-p",
+    "test_*.py"
+  ],
+  "python.testing.pytestEnabled": false,
+  "python.testing.unittestEnabled": true
 }
 
