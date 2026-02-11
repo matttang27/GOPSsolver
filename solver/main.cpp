@@ -3,6 +3,7 @@
 #include <iostream>
 #include <random>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -79,6 +80,22 @@ void runLpBenchmark(int minN, int maxN, int trials) {
     }
 }
 
+bool parseIntArg(const std::string& raw, int& out) {
+    try {
+        std::size_t consumed = 0;
+        int value = std::stoi(raw, &consumed);
+        if (consumed != raw.size()) {
+            return false;
+        }
+        out = value;
+        return true;
+    } catch (const std::invalid_argument&) {
+        return false;
+    } catch (const std::out_of_range&) {
+        return false;
+    }
+}
+
 void printUsage(const char* exeName) {
     std::cout << "Usage: " << exeName << " [options]" << std::endl;
     std::cout << "Options:" << std::endl;
@@ -133,9 +150,28 @@ State fullState(int n, int p) {
 
 int main(int argc, char** argv) {
     if (argc >= 2 && std::string(argv[1]) == "lp-bench") {
-        int minN = argc >= 3 ? std::stoi(argv[2]) : 2;
-        int maxN = argc >= 4 ? std::stoi(argv[3]) : minN;
-        int trials = argc >= 5 ? std::stoi(argv[4]) : 3;
+        int minN = 2;
+        int maxN = 2;
+        int trials = 3;
+        if (argc >= 3) {
+            if (!parseIntArg(argv[2], minN)) {
+                std::cout << "Invalid minN for lp-bench: " << argv[2] << std::endl;
+                return 1;
+            }
+            maxN = minN;
+        }
+        if (argc >= 4) {
+            if (!parseIntArg(argv[3], maxN)) {
+                std::cout << "Invalid maxN for lp-bench: " << argv[3] << std::endl;
+                return 1;
+            }
+        }
+        if (argc >= 5) {
+            if (!parseIntArg(argv[4], trials)) {
+                std::cout << "Invalid trials for lp-bench: " << argv[4] << std::endl;
+                return 1;
+            }
+        }
         runLpBenchmark(minN, maxN, trials);
         return 0;
     }
@@ -167,7 +203,12 @@ int main(int argc, char** argv) {
                 std::cout << "Missing value for --n" << std::endl;
                 return 1;
             }
-            n = std::stoi(argv[++argi]);
+            int parsedN = 0;
+            if (!parseIntArg(argv[++argi], parsedN)) {
+                std::cout << "Invalid --n value: " << argv[argi] << std::endl;
+                return 1;
+            }
+            n = parsedN;
         } else if (arg == "--cache-out") {
             if (argi + 1 >= argc) {
                 std::cout << "Missing value for --cache-out" << std::endl;
@@ -186,6 +227,10 @@ int main(int argc, char** argv) {
 
     if (g_solveObjective == SolveObjective::Points && g_enableGuarantee) {
         std::cout << "Note: guarantee shortcut is ignored for objective=points." << std::endl;
+    }
+    if (n <= 0 || n > kMaxCards) {
+        std::cout << "Invalid --n: " << n << ". Expected range is 1.." << kMaxCards << "." << std::endl;
+        return 1;
     }
 
     long long totalMs = 0;
