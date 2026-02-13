@@ -11,7 +11,6 @@
 #include <sstream>
 #include <string>
 #include <unordered_map>
-#include <vector>
 
 #include <glpk.h>
 
@@ -185,17 +184,13 @@ bool saveEvCache(const std::string& path) {
     out.write(reinterpret_cast<const char*>(&reserved), sizeof(reserved));
     out.write(reinterpret_cast<const char*>(&count), sizeof(count));
 
-    std::vector<std::pair<std::uint64_t, double>> entries;
-    entries.reserve(g_evCache.size());
+    // Stream records directly from the in-memory cache to avoid allocating
+    // a second full-size copy during serialization.
     for (const auto& entry : g_evCache) {
-        entries.emplace_back(packStateKey(entry.first), entry.second);
-    }
-    std::sort(entries.begin(), entries.end(),
-        [](const auto& lhs, const auto& rhs) { return lhs.first < rhs.first; });
-
-    for (const auto& entry : entries) {
-        out.write(reinterpret_cast<const char*>(&entry.first), sizeof(entry.first));
-        out.write(reinterpret_cast<const char*>(&entry.second), sizeof(entry.second));
+        const std::uint64_t packedKey = packStateKey(entry.first);
+        const double value = entry.second;
+        out.write(reinterpret_cast<const char*>(&packedKey), sizeof(packedKey));
+        out.write(reinterpret_cast<const char*>(&value), sizeof(value));
     }
     if (!out) {
         std::cerr << "Failed while writing cache output file: " << path << std::endl;
