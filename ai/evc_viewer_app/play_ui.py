@@ -16,7 +16,16 @@ from evc_viewer_app.state_types import ss
 from evc_viewer_app.ui import render_state_summary
 
 
-def _init_play_ui_state() -> None:
+def _clamp_int_session_value(key: str, *, default: int, min_value: int, max_value: int) -> None:
+    raw_value = st.session_state.get(key, default)
+    try:
+        parsed = int(raw_value)
+    except (TypeError, ValueError):
+        parsed = int(default)
+    st.session_state[key] = max(min_value, min(max_value, parsed))
+
+
+def _init_play_ui_state(max_card: int) -> None:
     S = ss()
     if "play_history" not in st.session_state:
         S.play_history = []
@@ -25,6 +34,8 @@ def _init_play_ui_state() -> None:
     # Default opponent: "evc-ne" (best-looking baseline bot for this app).
     if "play_bot_strategy" not in st.session_state:
         S.play_bot_strategy = "evc-ne"
+    _clamp_int_session_value("play_n", default=max_card, min_value=1, max_value=max_card)
+    _clamp_int_session_value("auto_n", default=max_card, min_value=1, max_value=max_card)
 
 
 def _render_card_face(
@@ -93,7 +104,7 @@ def _hand_button_grid(
 
 
 def render_play_tabs(cache: Mapping[int, float], max_card: int) -> None:
-    _init_play_ui_state()
+    _init_play_ui_state(max_card)
     S = ss()
     st.subheader("Play / Simulate")
     bot_choices = strategy_choices()
@@ -110,7 +121,6 @@ def render_play_tabs(cache: Mapping[int, float], max_card: int) -> None:
                         "Cards (N)",
                         min_value=1,
                         max_value=max_card,
-                        value=int(S.get("play_n", max_card)),
                         step=1,
                         key="play_n",
                     )
@@ -275,7 +285,6 @@ def render_play_tabs(cache: Mapping[int, float], max_card: int) -> None:
                     "Cards (N)",
                     min_value=1,
                     max_value=max_card,
-                    value=int(S.get("auto_n", max_card)),
                     step=1,
                     key="auto_n",
                 )

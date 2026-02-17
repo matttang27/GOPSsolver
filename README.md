@@ -94,6 +94,16 @@ streamlit run ai/evc_viewer.py
 
 Hosted app: https://goofspiel-ne-viewer.streamlit.app
 
+## Research Questions / Next Steps
+
+- What simple, recurring patterns can we extract from NE play?
+- How do baseline strategies (random and deterministic heuristics) perform against NE?
+- Can we build an AI using other techniques (Regression, Reinforcement Learning) that are unexploitable enough and trained / stored more efficiently than the current recursive algorithm?
+- Can we build an exploitative AI that starts from NE and adapts to opponent tendencies?
+- How do intentionally biased NE bots (for example, playing more 10s when they see 10s, otherwise NE) perform versus pure NE and exploitative bots?
+- Which alternative reward formulations are worth testing? (e.g. Winning prizes from slim margins)
+- Build a playable site where users face multiple bots and analyze NE strategy decisions.
+
 ## Documentation
 
 - Friendly usage starts here in `README.md`.
