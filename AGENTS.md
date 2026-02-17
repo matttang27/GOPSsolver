@@ -7,3 +7,5 @@
 
 ## Active Code Areas
 - Active solver and tooling work happens in `solver/`, `ai/`, `tests/`, and CI config under `.github/`.
+
+Use a default timeout of 300 seconds for commands.
