@@ -9,10 +9,10 @@ from common import State
 from play import run_game
 from strategies import (
     build_strategy,
-    make_current_strategy,
-    make_exploit_current_strategy,
     sample_action,
     strategy_choices,
+    strategy_distribution_builtin,
+    strategy_is_compression_safe,
     strategy_label,
     strategy_requires_cache,
 )
@@ -32,6 +32,20 @@ class TestStrategies(unittest.TestCase):
         self.assertIn("evc-ne", choices)
         self.assertTrue(strategy_requires_cache("evc-ne"))
         self.assertFalse(strategy_requires_cache("random"))
+        self.assertFalse(strategy_is_compression_safe("current"))
+        self.assertTrue(strategy_is_compression_safe("highest"))
+
+    def test_builtin_strategy_distribution(self) -> None:
+        actions, probs = strategy_distribution_builtin("highest", [1, 3], 2)
+        self.assertEqual(actions, [3])
+        self.assertEqual(list(probs), [1.0])
+
+        actions, probs = strategy_distribution_builtin("current", [1, 3], 2)
+        self.assertEqual(actions, [1, 3])
+        self.assertAlmostEqual(float(sum(probs)), 1.0, places=12)
+
+        with self.assertRaises(ValueError):
+            strategy_distribution_builtin("evc-ne", [1, 2], 1)
 
     def test_build_strategy_unknown_raises(self) -> None:
         with self.assertRaises(ValueError):
@@ -49,8 +63,8 @@ class TestStrategies(unittest.TestCase):
             diff=0,
             curP=2,  # not in hand, so fallback path is used
         )
-        s1 = make_current_strategy(rng=random.Random(123))
-        s2 = make_current_strategy(rng=random.Random(123))
+        s1 = build_strategy("current", rng=random.Random(123))
+        s2 = build_strategy("current", rng=random.Random(123))
         self.assertEqual(s1(state), s2(state))
 
     def test_exploit_current_strategy_prefers_curp_plus_one(self) -> None:
@@ -61,7 +75,7 @@ class TestStrategies(unittest.TestCase):
             diff=0,
             curP=2,
         )
-        strat = make_exploit_current_strategy(rng=random.Random(1))
+        strat = build_strategy("exploit-current", rng=random.Random(1))
         self.assertEqual(strat(state), 3)
 
     def test_strategy_label(self) -> None:

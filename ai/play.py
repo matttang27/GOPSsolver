@@ -15,7 +15,15 @@ for path in (AI_DIR, REPORTS_DIR):
         sys.path.insert(0, path)
 
 from common import State, build_matrix, cmp, list_cards, load_evc, remove_card
-from strategies import ActionFn, build_strategy, sample_action, strategy_choices, strategy_label, strategy_requires_cache
+from strategies import (
+    ActionFn,
+    build_strategy_distribution,
+    distribution_to_action_strategy,
+    sample_action,
+    strategy_choices,
+    strategy_label,
+    strategy_requires_cache,
+)
 
 from linprog import findBestStrategy
 
@@ -122,7 +130,7 @@ def auto_play_game(n: int,
 
 def auto_play_random(n: int, seed: int, verbose: bool = True) -> int:
     rng = random.Random(seed) if seed != 0 else random
-    strat = build_strategy("random", rng=rng)
+    strat = distribution_to_action_strategy(build_strategy_distribution("random"), rng=rng)
     return auto_play_game(n, seed, strat, strat, verbose=verbose, rng=rng)
 
 
@@ -249,8 +257,8 @@ def main() -> None:
             rng_b = rng_game
             if args.sb_seed is not None:
                 rng_b = random.Random(args.sb_seed) if args.sb_seed != 0 else random
-            stratA = build_strategy(args.sa, cache=cache, rng=rng_a)
-            stratB = build_strategy(args.sb, cache=cache, rng=rng_b)
+            stratA = distribution_to_action_strategy(build_strategy_distribution(args.sa, cache=cache), rng=rng_a)
+            stratB = distribution_to_action_strategy(build_strategy_distribution(args.sb, cache=cache), rng=rng_b)
             diff = auto_play_game(n, seed_i, stratA, stratB, verbose=args.verbose, rng=rng_game)
             total_diff += diff
             if diff > 0:
